@@ -1,6 +1,6 @@
 [![ci](https://github.com/soda480/thread-order/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soda480/thread-order/actions/workflows/ci.yml)
 ![Coverage](https://raw.githubusercontent.com/soda480/thread-order/main/badges/coverage.svg)
-[![PyPI version](https://badge.fury.io/py/thread-order.svg)](https://badge.fury.io/py/thread-order)
+[![PyPI version](https://badge.fury.io/py/thread-order.svg?icon=si%3Apython)](https://badge.fury.io/py/thread-order)
 
 # thread-order
 `thread-order` is a lightweight Python framework for running functions in parallel while honoring explicit dependency order.
