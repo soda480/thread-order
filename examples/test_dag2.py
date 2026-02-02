@@ -14,7 +14,7 @@ def setup_state(state):
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
         last_name = state['faker'].last_name()
-    sleep = random.uniform(.2, 4.0)
+    sleep = random.uniform(.8, 6.0)
     logger.debug(f'{name} "{last_name}" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:

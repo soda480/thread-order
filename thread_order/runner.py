@@ -1,3 +1,4 @@
+import os
 import ast
 import re
 import sys
@@ -183,6 +184,9 @@ def _setup_output(scheduler, args):
 
     else:
         if not args.log:
+            # suppress scheduler logging noise
+            sys.stderr = open(os.devnull, 'w')
+
             def on_task_done(name, thread_name, status, count, total):
                 if status == TaskStatus.PASSED:
                     char = '.'
