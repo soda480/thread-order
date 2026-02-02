@@ -36,7 +36,7 @@ def get_parser():
     parser.add_argument(
         '--workers',
         type=int,
-        default=default_workers,
+        default=None,
         help='Number of worker threads (default: Scheduler default)')
     parser.add_argument(
         '--tags',
@@ -177,7 +177,11 @@ def _setup_output(scheduler, args):
         def on_task_done(task_name, thread_name, status, count, viewer, *args):
             viewer.done(thread_name)
 
-        viewer = ThreadViewer(thread_count=args.workers, task_count=total, thread_prefix='thread_')
+        viewer = ThreadViewer(
+            thread_count=args.effective_workers,
+            task_count=total,
+            thread_prefix='thread_',
+            inactive_char='░')
         scheduler.on_task_run(on_task_run, viewer)
         scheduler.on_task_done(on_task_done, viewer)
         return viewer
@@ -202,7 +206,7 @@ def _setup_output(scheduler, args):
             def on_task_done(name, thread_name, status, count, total):
                 _percent = int((count / total) * 100)
                 percent = f'{status.value} [{_percent:3d}% ]'
-                base = f'[{_pad_thread_name(thread_name, args.workers)}] {name}' \
+                base = f'[{_pad_thread_name(thread_name, args.effective_workers)}] {name}' \
                     if thread_name else name
                 dots = '.' * max(0, 75 - len(base) - len(percent))
                 logger.info(f'{base} {dots} {percent}')
@@ -279,7 +283,7 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
     """ build Scheduler constructor kwargs and configure logging if requested
     """
     scheduler_kwargs = {
-        'workers': args.workers if args.workers else None,
+        'workers': args.effective_workers,
         'state': initial_state,
         'clear_results_on_start': clear_results_on_start,
         'skip_dependents': args.skip_deps
@@ -291,7 +295,7 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
     # prefer module-provided logging hook if available
     setup_logging_function = getattr(module, 'setup_logging', None)
     if callable(setup_logging_function):
-        setup_logging_function(args.workers, args.verbose)
+        setup_logging_function(args.effective_workers, args.verbose)
     else:
         scheduler_kwargs['setup_logging'] = True
         scheduler_kwargs['verbose'] = args.verbose
@@ -316,8 +320,14 @@ def validate_args(args):
             'Error: the --viewer and --verbose arguments cannot be used together')
     if args.progress and args.viewer:
         raise SystemExit('Error: --progress and --viewer cannot be used together')
-    if args.workers < 1:
+    if args.workers and args.workers < 1:
         raise SystemExit('Error: --workers must be >= 1')
+
+def set_effective_workers(args, task_count):
+    """ set args.effective_workers to the actual number of workers to use
+        based on task count and requested workers.
+    """
+    args.effective_workers = args.workers if args.workers else min(default_workers, task_count)
 
 def _main(argv=None):
     """ main CLI entry point
@@ -333,6 +343,14 @@ def _main(argv=None):
     module_path, function_name = split_target(args.target)
     module = load_module(module_path)
 
+    # collect and optionally filter marked functions
+    tags_filter = _parse_tags_filter(args.tags)
+    marked_functions, single_function_mode = _collect_and_filter_functions(
+        module, module_path, tags_filter, function_name)
+    task_count = len(marked_functions)
+
+    set_effective_workers(args, task_count)
+
     # build scheduler configuration and configure logging
     scheduler_kwargs = _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
 
@@ -340,13 +358,7 @@ def _main(argv=None):
     _maybe_call_setup_state(module, initial_state)
 
     scheduler = Scheduler(**scheduler_kwargs)
-
-    # collect and optionally filter marked functions
-    tags_filter = _parse_tags_filter(args.tags)
-    marked_functions, single_function_mode = _collect_and_filter_functions(
-        module, module_path, tags_filter, function_name)
-
-    logger.info(f'collected {len(marked_functions)} marked functions')
+    logger.info(f'collected {task_count} marked functions')
     _register_functions(scheduler, marked_functions, tags_filter, single_function_mode)
 
     if args.graph:
