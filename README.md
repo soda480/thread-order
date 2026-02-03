@@ -61,23 +61,27 @@ You get:
 
 ### CLI usage
 ```bash
-usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] [--progress] [--viewer] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps]
+             [--progress] [--viewer] [--state-file STATE_FILE] target
 
 A thread-order CLI for dependency-aware, parallel function execution.
 
 positional arguments:
-  target             Python file containing @mark functions
+  target                Python file containing @mark functions
 
 options:
-  -h, --help         show this help message and exit
-  --workers WORKERS  Number of worker threads (default: Scheduler default)
-  --tags TAGS        Comma-separated list of tags to filter functions by
-  --log              enable logging output
-  --verbose          enable verbose logging output
-  --graph            show dependency graph and exit
-  --skip-deps        skip functions whose dependencies failed
-  --progress         show progress bar (requires progress1bar package)
-  --viewer           show thread viewer visualizer (requires thread-viewer package)
+  -h, --help            show this help message and exit
+  --workers WORKERS     Number of worker threads 
+                            (default: Scheduler default or number of tasks whichever is less)
+  --tags TAGS           Comma-separated list of tags to filter functions by
+  --log                 enable logging output
+  --verbose             enable verbose logging output
+  --graph               show dependency graph and exit
+  --skip-deps           skip functions whose dependencies failed
+  --progress            show progress bar (requires progress1bar package)
+  --viewer              show thread viewer visualizer (requires thread-viewer package)
+  --state-file STATE_FILE
+                        Path to a file containing initial state values in JSON format
 ```
 
 ### Run all marked functions in a module:

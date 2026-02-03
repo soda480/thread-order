@@ -37,7 +37,8 @@ def get_parser():
         '--workers',
         type=int,
         default=None,
-        help='Number of worker threads (default: Scheduler default)')
+        help='Number of worker threads '
+             '(default: Scheduler default or number of tasks whichever is less)')
     parser.add_argument(
         '--tags',
         type=str,
@@ -67,14 +68,34 @@ def get_parser():
         '--viewer',
         action='store_true',
         help='show thread viewer visualizer (requires thread-viewer package)')
+    parser.add_argument(
+        '--state-file',
+        type=str,
+        default=None,
+        help='Path to a file containing initial state values in JSON format')
     return parser
 
-def get_initial_state(unknown_args):
+def _maybe_load_state_file(state_file):
+    """ load initial state from a JSON file
+    """
+    if not state_file:
+        return {}
+    path = Path(state_file)
+    if not path.exists():
+        raise FileNotFoundError(f"State file '{state_file}' not found")
+    with open(path, 'r', encoding='utf-8') as f:
+        state = json.load(f)
+    # protect reserved keys
+    if any(k.startswith('_') for k in state.keys()):
+        raise ValueError('State file keys cannot start with an underscore (_) character')
+    return state
+
+def get_initial_state(unknown_args, state_file):
     """ parse arbitrary --key=value pairs from the unknown args list
         Example:
         ["--env=dev", "--region=us_west_2"] -> {"env": "dev", "region": "us_west_2"}
     """
-    initial_state = {}
+    initial_state = _maybe_load_state_file(state_file)
     clear_results_on_start = True
     for item in unknown_args:
         if not item.startswith('--'):
@@ -337,7 +358,7 @@ def _main(argv=None):
     # parse args and initialize shared state
     args, unknown_args = parser.parse_known_args(argv)
     validate_args(args)
-    initial_state, clear_results_on_start = get_initial_state(unknown_args)
+    initial_state, clear_results_on_start = get_initial_state(unknown_args, args.state_file)
 
     # load target module and resolve target function
     module_path, function_name = split_target(args.target)
