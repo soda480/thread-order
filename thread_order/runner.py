@@ -371,7 +371,8 @@ def _main(argv=None):
         summary = scheduler.start()
 
     # debug final state and print user-facing summary
-    logger.debug('Scheduler::State: ' + json.dumps(scheduler.state, indent=2, default=str))
+    logger.debug('Scheduler::State: ' + json.dumps(
+        scheduler.sanitized_state, indent=2, default=str))
     print(summary['text'])
 
     if summary.get('failed'):

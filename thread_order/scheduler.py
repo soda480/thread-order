@@ -432,12 +432,26 @@ class Scheduler:
         """
         self._on_scheduler_done = (function, args, kwargs)
 
+    def sanitize_state(self):
+        """ sanitize state
+            remove the lock from the current state
+        """
+        with self.state_lock:
+            state_copy = dict(self.state)
+        state_copy.pop('_state_lock', None)
+        return state_copy
+
     @property
     def graph(self):
         """ return the underlying dependency graph (read-only)
         """
         return self._graph
 
+    @property
+    def sanitized_state(self):
+        """ return a copy of the current state with the lock removed
+        """
+        return self.sanitize_state()
 
 def mark(*, after=None, with_state=True, tags=None):
     """ mark a function for deferred registration by a Scheduler
