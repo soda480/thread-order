@@ -1,5 +1,4 @@
 import ast
-import os
 import re
 import sys
 import argparse
@@ -178,7 +177,7 @@ def _setup_output(scheduler, args):
     if args.progress:
         if not HAS_PROGRESS_BAR:
             raise SystemExit('progress1bar package is required for progress bar output')
-  
+
         def on_task_done(task_name, thread_name, status, count, total, pb, *args):
             pb.count += 1
             pb.alias = task_name
@@ -189,7 +188,7 @@ def _setup_output(scheduler, args):
     elif args.viewer:
         if not HAS_VIEWER:
             raise SystemExit('thread-viewer package is required for thread viewer output')
-   
+
         def on_task_run(task_name, thread_name, viewer, *args):
             viewer.run(thread_name)
 

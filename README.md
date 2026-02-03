@@ -110,7 +110,7 @@ def setup_state(state):
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
         last_name = state['faker'].last_name()
-    sleep = random.uniform(.5, 3.5)
+    sleep = random.uniform(.5, 2.5)
     logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:
@@ -126,27 +126,27 @@ def run(name, state, deps=None, fail=False):
         return '|'.join(results)
 
 @mark()
-def task_a(state): return run('task_a', state)
+def pre_op_assessment_A(state): return run('pre_op_assessment_A', state)
 
-@mark(after=['task_a'])
-def task_b(state): return run('task_b', state, deps=['task_a'])
+@mark(after=['pre_op_assessment_A'])
+def assign_surgical_staff_B(state): return run('assign_surgical_staff_B', state, deps=['pre_op_assessment_A'])
 
-@mark(after=['task_a'])
-def task_c(state): return run('task_c', state, deps=['task_a'])
+@mark(after=['pre_op_assessment_A'])
+def prepare_operating_room_C(state): return run('prepare_operating_room_C', state, deps=['pre_op_assessment_A'])
 
-@mark(after=['task_c'])
-def task_d(state): return run('task_d', state, deps=['task_c'], fail=True)
+@mark(after=['prepare_operating_room_C'])
+def sterilize_instruments_D(state): return run('sterilize_instruments_D', state, deps=['prepare_operating_room_C'], fail=True)
     
-@mark(after=['task_c'])
-def task_e(state): return run('task_e', state, deps=['task_c'])
+@mark(after=['prepare_operating_room_C'])
+def equipment_safety_checks_E(state): return run('equipment_safety_checks_E', state, deps=['prepare_operating_room_C'])
 
-@mark(after=['task_b', 'task_d'])
-def task_f(state): return run('task_f', state, deps=['task_b', 'task_d'])
+@mark(after=['assign_surgical_staff_B', 'sterilize_instruments_D'])
+def perform_surgery_F(state): return run('perform_surgery_F', state, deps=['assign_surgical_staff_B', 'sterilize_instruments_D'])
 ```
 
 </details>
 
-![example4c](https://github.com/soda480/thread-order/blob/main/docs/images/example4c.gif?raw=true)
+![test_dag1](https://github.com/soda480/thread-order/blob/main/docs/images/test_dag1.gif?raw=true)
 
 
 ### Run a single function:
@@ -179,35 +179,35 @@ tdrun examples/example4c.py --graph
 Example output:
 ```bash
 Graph: 6 nodes, 6 edges
-Roots: [0]
-Leaves: [4], [5]
+Roots: [3]
+Leaves: [1], [2]
 Levels: 4
 
 Nodes:
-  [0] test_a
-  [1] test_b
-  [2] test_c
-  [3] test_d
-  [4] test_e
-  [5] test_f
+  [0] assign_surgical_staff_B
+  [1] equipment_safety_checks_E
+  [2] perform_surgery_F
+  [3] pre_op_assessment_A
+  [4] prepare_operating_room_C
+  [5] sterilize_instruments_D
 
 Edges:
-  [0] -> [1], [2]
-  [1] -> [5]
-  [2] -> [3], [4]
-  [3] -> [5]
-  [4] -> (none)
-  [5] -> (none)
+  [0] -> [2]
+  [1] -> (none)
+  [2] -> (none)
+  [3] -> [0], [4]
+  [4] -> [1], [5]
+  [5] -> [2]
 
 Stats:
   Longest chain length (edges): 3
   Longest chains:
-    test_a -> test_c -> test_d -> test_f
+    pre_op_assessment_A -> prepare_operating_room_C -> sterilize_instruments_D -> perform_surgery_F
   High fan-in nodes (many dependencies):
-    test_f (indegree=2)
+    perform_surgery_F (indegree=2)
   High fan-out nodes (many dependents):
-    test_a (children=2)
-    test_c (children=2)
+    pre_op_assessment_A (children=2)
+    prepare_operating_room_C (children=2)
 ```
 
 ## API Overview
