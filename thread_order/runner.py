@@ -178,13 +178,16 @@ def _setup_output(scheduler, args):
         if not HAS_PROGRESS_BAR:
             raise SystemExit('progress1bar package is required for progress bar output')
 
-        def on_task_done(task_name, thread_name, status, count, total, pb, *args):
-            pb.count += 1
-            pb.alias = task_name
+        def on_task_done(task_name, thread_name, status, count, total, pbar, *args):
+            pbar.count += 1
+            pbar.alias = task_name
 
-        pb = ProgressBar(total=total, show_complete=False, clear_alias=True)
-        scheduler.on_task_done(on_task_done, total, pb)
-        return pb
+        pbar = ProgressBar(
+            total=total,
+            show_complete=False,
+            clear_alias=True)
+        scheduler.on_task_done(on_task_done, total, pbar)
+        return pbar
     elif args.viewer:
         if not HAS_VIEWER:
             raise SystemExit('thread-viewer package is required for thread viewer output')
