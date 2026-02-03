@@ -93,7 +93,7 @@ class ThreadProxyLogger:
         return getattr(logging.getLogger(threading.current_thread().name), name)
 
 def configure_logging(workers, prefix='thread', add_stream_handler=False, highlights=None,
-                      verbose=False):
+                      verbose=False, add_file_handler=True):
 
     root_logger = logging.getLogger()
     if getattr(root_logger, '_logging_initialized', False):
@@ -102,10 +102,13 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
     root_logger.setLevel(logging.DEBUG)
     root_logger.handlers.clear()
 
+    # Prevent lastResort output by ensuring *a* handler exists:
+    root_logger.addHandler(logging.NullHandler())
+
     file_formatter = logging.Formatter(
         '%(asctime)s %(levelname)-5s [%(threadName)s] %(funcName)s: %(message)s')
 
-    if add_stream_handler or verbose:
+    if add_stream_handler:
         if HAS_COLOR:
             init(autoreset=False)
             stream_formatter = ColoredFormatter(workers, highlights=highlights, verbose=verbose)
@@ -138,6 +141,7 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
         logger.setLevel(logging.DEBUG)
         return logger
 
-    add_handler(threading.current_thread().name)
-    for index in range(workers):
-        add_handler(f'{prefix}_{index}')
+    if add_file_handler:
+        add_handler(threading.current_thread().name)
+        for index in range(workers):
+            add_handler(f'{prefix}_{index}')

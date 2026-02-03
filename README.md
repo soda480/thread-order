@@ -224,7 +224,8 @@ class Scheduler(
     clear_results_on_start=True,  # wipe previous results
     setup_logging=False,          # enable built-in logging config
     add_stream_handler=True,      # attach stream handler to logger
-    verbose=False,                # enable extra debug logging
+    add_file_handler=True,        # attach file handlers for each thread to logger
+    verbose=False,                # enable extra debug logging on stream handler
     skip_dependents=False         # skip dependents when prerequisites fail
 )
 ```

@@ -1,5 +1,5 @@
-import os
 import ast
+import os
 import re
 import sys
 import argparse
@@ -10,7 +10,6 @@ from contextlib import nullcontext
 from pathlib import Path
 from thread_order import Scheduler, ThreadProxyLogger, default_workers
 from thread_order.graph_summary import format_graph_summary
-from thread_order.scheduler import TaskStatus
 try:
     from progress1bar import ProgressBar
     HAS_PROGRESS_BAR = True
@@ -179,7 +178,7 @@ def _setup_output(scheduler, args):
     if args.progress:
         if not HAS_PROGRESS_BAR:
             raise SystemExit('progress1bar package is required for progress bar output')
-
+  
         def on_task_done(task_name, thread_name, status, count, total, pb, *args):
             pb.count += 1
             pb.alias = task_name
@@ -187,11 +186,10 @@ def _setup_output(scheduler, args):
         pb = ProgressBar(total=total, show_complete=False, clear_alias=True)
         scheduler.on_task_done(on_task_done, total, pb)
         return pb
-
     elif args.viewer:
         if not HAS_VIEWER:
             raise SystemExit('thread-viewer package is required for thread viewer output')
-
+   
         def on_task_run(task_name, thread_name, viewer, *args):
             viewer.run(thread_name)
 
@@ -206,33 +204,16 @@ def _setup_output(scheduler, args):
         scheduler.on_task_run(on_task_run, viewer)
         scheduler.on_task_done(on_task_done, viewer)
         return viewer
-
     else:
-        if not args.log:
-            # suppress scheduler logging noise
-            sys.stderr = open(os.devnull, 'w')
+        def on_task_done(name, thread_name, status, count, total):
+            _percent = int((count / total) * 100)
+            percent = f'{status.value} [{_percent:3d}% ]'
+            base = f'[{_pad_thread_name(thread_name, args.effective_workers)}] {name}' \
+                if thread_name else name
+            dots = '.' * max(0, 75 - len(base) - len(percent))
+            logger.info(f'{base} {dots} {percent}')
 
-            def on_task_done(name, thread_name, status, count, total):
-                if status == TaskStatus.PASSED:
-                    char = '.'
-                elif status == TaskStatus.FAILED:
-                    char = 'f'
-                else:
-                    char = 's'
-                print(char, end='', flush=True)
-
-            scheduler.on_task_done(on_task_done, total)
-            scheduler.on_scheduler_done(lambda s: print('', flush=True))
-        else:
-            def on_task_done(name, thread_name, status, count, total):
-                _percent = int((count / total) * 100)
-                percent = f'{status.value} [{_percent:3d}% ]'
-                base = f'[{_pad_thread_name(thread_name, args.effective_workers)}] {name}' \
-                    if thread_name else name
-                dots = '.' * max(0, 75 - len(base) - len(percent))
-                logger.info(f'{base} {dots} {percent}')
-
-            scheduler.on_task_done(on_task_done, total)
+        scheduler.on_task_done(on_task_done, total)
         return nullcontext()
 
 def _pad_thread_name(name, workers):
@@ -309,10 +290,6 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
         'clear_results_on_start': clear_results_on_start,
         'skip_dependents': args.skip_deps
     }
-
-    if not args.log:
-        return scheduler_kwargs
-
     # prefer module-provided logging hook if available
     setup_logging_function = getattr(module, 'setup_logging', None)
     if callable(setup_logging_function):
@@ -321,6 +298,7 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
         scheduler_kwargs['setup_logging'] = True
         scheduler_kwargs['verbose'] = args.verbose
         scheduler_kwargs['add_stream_handler'] = not args.progress and not args.viewer
+        scheduler_kwargs['add_file_handler'] = args.log
 
     return scheduler_kwargs
 
@@ -358,6 +336,7 @@ def _main(argv=None):
     # parse args and initialize shared state
     args, unknown_args = parser.parse_known_args(argv)
     validate_args(args)
+
     initial_state, clear_results_on_start = get_initial_state(unknown_args, args.state_file)
 
     # load target module and resolve target function
