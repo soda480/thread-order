@@ -28,7 +28,7 @@ class Scheduler:
     """
     def __init__(self, workers=None, setup_logging=False, add_stream_handler=True,
                  state=None, store_results=True, clear_results_on_start=True, verbose=False,
-                 skip_dependents=False):
+                 skip_dependents=False, add_file_handler=True):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
@@ -76,10 +76,10 @@ class Scheduler:
             self.state['results'] = {}
 
         self._prefix = 'thread'
-        if setup_logging or verbose:
-            configure_logging(self._workers, prefix=self._prefix,
-                              add_stream_handler=add_stream_handler, verbose=verbose)
-
+        if setup_logging:
+            configure_logging(self._workers, prefix=self._prefix, verbose=verbose,
+                              add_stream_handler=add_stream_handler,
+                              add_file_handler=add_file_handler)
         self._skip_dependents = skip_dependents
 
     def register(self, obj, name, after=None, with_state=False):
@@ -432,12 +432,26 @@ class Scheduler:
         """
         self._on_scheduler_done = (function, args, kwargs)
 
+    def sanitize_state(self):
+        """ sanitize state
+            remove the lock from the current state
+        """
+        with self.state_lock:
+            state_copy = dict(self.state)
+        state_copy.pop('_state_lock', None)
+        return state_copy
+
     @property
     def graph(self):
         """ return the underlying dependency graph (read-only)
         """
         return self._graph
 
+    @property
+    def sanitized_state(self):
+        """ return a copy of the current state with the lock removed
+        """
+        return self.sanitize_state()
 
 def mark(*, after=None, with_state=True, tags=None):
     """ mark a function for deferred registration by a Scheduler
