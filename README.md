@@ -28,6 +28,7 @@ Use it when you want:
 * CLI: `tdrun` — dependency-aware test runner with tag filtering
 * DAG visualization — inspect your dependency graph with --graph
 * Simple, extensible design — no external dependencies
+* Prebuilt Docker image available to run tdrun with no local setup required. 
 
 ### About the DAG
 
@@ -209,6 +210,14 @@ Stats:
     pre_op_assessment_A (children=2)
     prepare_operating_room_C (children=2)
 ```
+
+## Running Docker Image
+
+```bash
+docker run -it --rm -v $PWD:/work soda480/thread-order <<tdrun args>>
+```
+
+`-it` parameter required for `--progress` and `--viewer` options
 
 ## API Overview
 
