@@ -10,6 +10,8 @@ __all__ = [
     'dmark',
     'mark',
     'default_workers',
+    'load_and_collect_functions',
+    'register_functions',
     '__version__']
 
 def __getattr__(name):
@@ -34,6 +36,12 @@ def __getattr__(name):
     if name == 'default_workers':
         from .scheduler import default_workers
         return default_workers
+    if name == 'load_and_collect_functions':
+        from .scheduler import load_and_collect_functions
+        return load_and_collect_functions
+    if name == 'register_functions':
+        from .scheduler import register_functions
+        return register_functions
     # If the requested attribute isn't one of the known top-level symbols,
     # try to lazily import a submodule (e.g. `thread_order.scheduler`) so
     # attribute lookups such as those used by mocking/patching succeed.
@@ -45,7 +53,7 @@ def __getattr__(name):
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.1.1'
+    __version__ = '1.1.2'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'

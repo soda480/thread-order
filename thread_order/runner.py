@@ -1,13 +1,11 @@
-import ast
 import re
 import sys
 import argparse
 import json
-import importlib.util
-import inspect
 from contextlib import nullcontext
 from pathlib import Path
-from thread_order import Scheduler, ThreadProxyLogger, default_workers
+from thread_order import (
+    Scheduler, ThreadProxyLogger, default_workers, load_and_collect_functions, register_functions)
 from thread_order.graph_summary import format_graph_summary
 try:
     from progress1bar import ProgressBar
@@ -109,67 +107,6 @@ def get_initial_state(unknown_args, state_file):
             initial_state[key] = value
     return initial_state, clear_results_on_start
 
-def split_target(target):
-    """ split 'module.py::test_name' into (module_path, test_name)
-        if no '::' is present, return (target, None).
-    """
-    if '::' in target:
-        module_path, function_name = target.split('::', 1)
-        return module_path, function_name
-    return target, None
-
-def load_module(path):
-    """ load a module from a given file path
-    """
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"Module file '{path}' not found")
-    spec = importlib.util.spec_from_file_location(path.stem, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load module from '{path}'")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-def get_functions(module):
-    """ yield (name, function, is_async) for top-level defs in source order.
-    """
-    module_path = inspect.getsourcefile(module)
-    if not module_path:
-        raise SystemExit('Could not determine source file for target module')
-
-    with open(module_path, 'r', encoding='utf-8') as f:
-        tree = ast.parse(f.read(), filename=module_path)
-
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            function = getattr(module, node.name, None)
-            if inspect.isfunction(function):
-                yield node.name, function, isinstance(node, ast.AsyncFunctionDef)
-
-def collect_functions(module, tags_filter=None):
-    """ return (name, function, meta) for all functions marked by @mark.
-    """
-    functions = []
-    module_path = inspect.getsourcefile(module) or '<unknown>'
-
-    for name, function, is_async in get_functions(module):
-        meta = getattr(function, '__thread_order__', None)
-        if meta is None:
-            continue
-
-        if is_async:
-            raise SystemExit(f"Async @mark functions are not supported: '{name}' in {module_path}")
-
-        if tags_filter:
-            tags = meta.get('tags') or []
-            if any(t not in tags for t in tags_filter):
-                continue
-
-        functions.append((name, function, meta))
-
-    return functions
-
 def _setup_output(scheduler, args):
     """ configure progress output based on args
     """
@@ -223,51 +160,6 @@ def _pad_thread_name(name, workers):
     """
     width = len(str(workers - 1))
     return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(width), name)
-
-def _register_functions(scheduler, marked_functions, tags_filter, single_function_mode):
-    """ register collected functions with the scheduler
-
-        handles dependency stripping for single-function mode and
-        dependency pruning when tag filtering is active.
-    """
-    allowed_names = ({name for name, _, _ in marked_functions} if tags_filter else None)
-
-    for name, function, meta in marked_functions:
-        after = meta.get('after') or None
-        with_state = bool(meta.get('with_state'))
-
-        # break dependency edges when running a single function
-        if single_function_mode and after:
-            after = []
-
-        # remove dependencies filtered out by tags
-        if after and allowed_names is not None:
-            # exclude dependencies that are missing due to tag filtering
-            after = [d for d in after if d in allowed_names]
-
-        scheduler.register(function, name=name, after=after, with_state=with_state)
-
-def _collect_and_filter_functions(module, module_path, tags_filter, function_name):
-    """ collect @mark functions and apply tag and name filtering
-    """
-    marked_functions = collect_functions(module, tags_filter=tags_filter)
-    if not marked_functions:
-        raise SystemExit(
-            f'No @mark functions found in {module_path} '
-            'or no functions match the given tags filter')
-
-    single_function_mode = False
-    if function_name is not None:
-        filtered = [f for f in marked_functions if f[0] == function_name]
-        if not filtered:
-            raise SystemExit(
-                f"function '{function_name}' not found or "
-                f"not marked with @mark in {module_path} or "
-                'does not match the given tags filter')
-        marked_functions = filtered
-        single_function_mode = True
-
-    return marked_functions, single_function_mode
 
 def _parse_tags_filter(tags):
     """ parse comma-separated tag list into a normalized filter list
@@ -341,14 +233,10 @@ def _main(argv=None):
 
     initial_state, clear_results_on_start = get_initial_state(unknown_args, args.state_file)
 
-    # load target module and resolve target function
-    module_path, function_name = split_target(args.target)
-    module = load_module(module_path)
-
     # collect and optionally filter marked functions
     tags_filter = _parse_tags_filter(args.tags)
-    marked_functions, single_function_mode = _collect_and_filter_functions(
-        module, module_path, tags_filter, function_name)
+    module, marked_functions, single_function_mode = load_and_collect_functions(
+        args.target, tags_filter)
     task_count = len(marked_functions)
 
     set_effective_workers(args, task_count)
@@ -361,7 +249,7 @@ def _main(argv=None):
 
     scheduler = Scheduler(**scheduler_kwargs)
     logger.info(f'collected {task_count} marked functions')
-    _register_functions(scheduler, marked_functions, tags_filter, single_function_mode)
+    register_functions(scheduler, marked_functions, tags_filter, single_function_mode)
 
     if args.graph:
         print(format_graph_summary(scheduler.graph))
