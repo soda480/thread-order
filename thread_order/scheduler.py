@@ -6,6 +6,10 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, CancelledError
 from functools import wraps
 from enum import Enum
+from pathlib import Path
+import importlib.util
+import ast
+import inspect
 from .graph import DAGraph
 from .timer import Timer
 from .logger import configure_logging
@@ -476,7 +480,6 @@ def mark(*, after=None, with_state=True, tags=None):
 
     return decorator
 
-
 def dmark(*, after=None, with_state=False, tags=None):
     """ mark a function for deferred registration by a Scheduler
         does NOT register anything; only attaches metadata for discovery
@@ -499,3 +502,97 @@ def dmark(*, after=None, with_state=False, tags=None):
         return wrapped
 
     return decorator
+
+def _split_target(target):
+    """ split 'module.py::test_name' into (module_path, test_name)
+        if no '::' is present, return (target, None).
+    """
+    if '::' in target:
+        module_path, function_name = target.split('::', 1)
+        return module_path, function_name
+    return target, None
+
+def _load_module(path):
+    """ load a module from a given file path
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Module file '{path}' not found")
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module from '{path}'")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+def _get_functions(module, module_path):
+    """ yield (name, function, is_async) for top-level defs in source order.
+    """
+    with open(module_path, 'r', encoding='utf-8') as f:
+        tree = ast.parse(f.read(), filename=module_path)
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function = getattr(module, node.name, None)
+            if inspect.isfunction(function):
+                yield node.name, function, isinstance(node, ast.AsyncFunctionDef)
+
+def _collect_functions(module, module_path, tags_filter=None):
+    """ return (name, function, meta) for all functions marked by @mark.
+    """
+    functions = []
+    for name, function, is_async in _get_functions(module, module_path):
+        meta = getattr(function, '__thread_order__', None)
+        if meta is None:
+            continue
+        if is_async:
+            raise SystemExit(f"Async @mark functions are not supported: '{name}'")
+        if tags_filter:
+            tags = meta.get('tags') or []
+            if any(t not in tags for t in tags_filter):
+                continue
+        functions.append((name, function, meta))
+    return functions
+
+def load_and_collect_functions(target, tags_filter=None):
+    """ load a module, collect @mark functions, and apply tag and name filtering
+    """
+    module_path, function_name = _split_target(target)
+    module = _load_module(module_path)
+    marked_functions = _collect_functions(module, module_path, tags_filter=tags_filter)
+    if not marked_functions:
+        raise SystemExit(
+            f'No @mark functions found in {module_path} '
+            'or no functions match the given tags filter')
+
+    single_function_mode = False
+    if function_name is not None:
+        filtered = [f for f in marked_functions if f[0] == function_name]
+        if not filtered:
+            raise SystemExit(
+                f"function '{function_name}' not found or "
+                f"not marked with @mark in {module_path} or "
+                'does not match the given tags filter')
+        marked_functions = filtered
+        single_function_mode = True
+
+    return module, marked_functions, single_function_mode
+
+def register_functions(scheduler, functions, tags_filter, single_function_mode):
+    """ register collected functions with the scheduler
+
+        handles dependency stripping for single-function mode and
+        dependency pruning when tag filtering is active.
+    """
+    allowed_names = ({name for name, _, _ in functions} if tags_filter else None)
+    for name, function, meta in functions:
+        after = meta.get('after') or None
+        with_state = bool(meta.get('with_state'))
+        # break dependency edges when running a single function
+        if single_function_mode and after:
+            after = []
+        # remove dependencies filtered out by tags
+        if after and allowed_names is not None:
+            # exclude dependencies that are missing due to tag filtering
+            after = [d for d in after if d in allowed_names]
+        scheduler.register(function, name=name, after=after, with_state=with_state)

@@ -6,7 +6,8 @@ import argparse
 from unittest.mock import patch
 from unittest.mock import call
 from unittest.mock import Mock
-from thread_order.scheduler import Scheduler, dmark, mark, TaskStatus
+from thread_order.scheduler import (
+    Scheduler,dmark, mark, TaskStatus, _split_target, _load_module, _collect_functions, load_and_collect_functions)
 
 class TestScheduler(unittest.TestCase):
 
@@ -306,6 +307,10 @@ class TestScheduler(unittest.TestCase):
         callback_mock = Mock(side_effect=Exception('error'))
         s._callback(callback_mock, 'task1')
 
+    def test_sanitized_state(self, *patches):
+        s = Scheduler()
+        self.assertTrue('_state_lock' not in s.sanitized_state)
+
     def test_mark(self, *patches):
         function_mock = Mock(__name__='task1')
         decorated_function = mark(with_state=True, tags='t1,t2')(function_mock)
@@ -329,3 +334,77 @@ class TestScheduler(unittest.TestCase):
         }
         self.assertEqual(decorated_function.__thread_order__, thread_order)
         decorated_function()
+
+    def test_split_target(self, *patches):
+        target = 'module.submodule::function'
+        module_path, function_name = _split_target(target)
+        self.assertEqual(module_path, 'module.submodule')
+        self.assertEqual(function_name, 'function')
+
+        target = 'module.submodule'
+        module_path, function_name = _split_target(target)
+        self.assertEqual(module_path, 'module.submodule')
+        self.assertIsNone(function_name)
+
+    @patch('thread_order.scheduler.Path')
+    def test_load_module_non_existent_module(self, path_patch, *patches):
+        path_mock = Mock()
+        path_mock.exists.return_value = False
+        path_patch.return_value = path_mock
+        with self.assertRaises(FileNotFoundError):
+            _load_module('non_existent_module')
+
+    @patch('thread_order.scheduler.importlib.util.spec_from_file_location', return_value=None)
+    @patch('thread_order.scheduler.Path')
+    def test_load_module_import_error(self, path_patch, *patches):
+        path_mock = Mock()
+        path_mock.exists.return_value = True
+        path_patch.return_value = path_mock
+        with self.assertRaises(ImportError):
+            _load_module('module')
+
+    @patch('thread_order.scheduler.importlib.util')
+    @patch('thread_order.scheduler.Path')
+    def test_load_module(self, path_patch, util_patch, *patches):
+        path_mock = Mock()
+        path_mock.exists.return_value = True
+        path_patch.return_value = path_mock
+        spec_mock = Mock()
+        util_patch.spec_from_file_location.return_value = spec_mock
+        result = _load_module('module')
+        self.assertEqual(result, util_patch.module_from_spec.return_value)
+
+    @patch('thread_order.scheduler._load_module')
+    @patch('thread_order.scheduler._collect_functions')
+    def test_load_and_collect_functions_no_marked_functions(self, collect_functions_patch, *patches):
+        collect_functions_patch.return_value = []
+        with self.assertRaises(SystemExit) as exception:
+            load_and_collect_functions('target_module')
+        self.assertTrue('No @mark functions found in target_module' in str(exception.exception))
+
+    @patch('thread_order.scheduler._load_module')
+    @patch('thread_order.scheduler._collect_functions')
+    def test_load_and_collect_functions_no_filtered_functions(self, collect_functions_patch, *patches):
+        collect_functions_patch.return_value = [('fn_b', Mock(), False), ('fn_c', Mock(), False)]
+        with self.assertRaises(SystemExit) as exception:
+            load_and_collect_functions('target_module::fn_a')
+        self.assertTrue("function 'fn_a' not found" in str(exception.exception))
+
+    @patch('thread_order.scheduler._load_module')
+    @patch('thread_order.scheduler._collect_functions')
+    def test_load_and_collect_functions(self, collect_functions_patch, load_module_patch, *patches):
+        collect_functions_patch.return_value = [('fn_a', Mock(), True), ('fn_b', Mock(), False)]
+        result = load_and_collect_functions('target_module')
+        self.assertEqual(result[0], load_module_patch.return_value)
+        self.assertEqual(result[1], collect_functions_patch.return_value)
+        self.assertEqual(result[2], False)
+
+    @patch('thread_order.scheduler._load_module')
+    @patch('thread_order.scheduler._collect_functions')
+    def test_load_and_collect_functions_filtered(self, collect_functions_patch, load_module_patch, *patches):
+        function_mock = Mock()
+        collect_functions_patch.return_value = [('fn_a', function_mock, False), ('fn_b', Mock(), False)]
+        result = load_and_collect_functions('target_module::fn_a')
+        self.assertEqual(result[0], load_module_patch.return_value)
+        self.assertEqual(result[1], [('fn_a', function_mock, False)])
+        self.assertEqual(result[2], True)
