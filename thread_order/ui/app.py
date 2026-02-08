@@ -610,7 +610,7 @@ class Runner(tb.Frame):
             title="About tdrun-ui",
             message=(
                 "tdrun-ui\n"
-                "Windows UI for thread-order\n"
+                "GUI for thread-order:\n"
                 "A lightweight framework for running functions concurrently across multiple "
                 " threads while maintaining a defined execution order.\n\n"
                 "Author: Emilio Reyes\n"
