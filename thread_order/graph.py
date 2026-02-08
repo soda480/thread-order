@@ -140,3 +140,18 @@ class DAGraph:
         """ return a list of original parent nodes (dependencies) for a given node
         """
         return list(self._original_parents.get(name, []))
+
+    @property
+    def parent_child_counts(self):
+        """ return [(parent_name, child_count), ...] for all parents in the graph.
+        """
+        # include nodes with zero children too (even if they don't appear in _children)
+        return [(name, len(self._children.get(name, ()))) for name in self._parents.keys()]
+
+    @property
+    def dependency_counts(self):
+        """ return [(node_name, number_of_dependencies), ...]
+        i.e. how many tasks must complete before this node can run.
+        """
+        return [(name, len(self._parents.get(name, ())))
+                for name in self._parents]
