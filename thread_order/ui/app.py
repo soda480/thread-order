@@ -232,7 +232,7 @@ class Runner(tb.Frame):
 
         self.table_run = Tableview(
             master=run_frame,
-            coldata=['Task'],
+            coldata=['#', 'Task'],
             rowdata=[],
             paginated=False,
             autofit=False,
@@ -245,21 +245,18 @@ class Runner(tb.Frame):
         self.table_run.load_table_data()
         self.table_run.pack(fill=BOTH, expand=True, padx=4, pady=4)
 
-        tv = self.table_run.view
+        table_run_view = self.table_run.view
         cols = self.table_run.get_columns()
-        task_col = cols[0].cid
-
-        # show the tree column (#0) + headings so we can display an icon
-        tv.configure(show="tree headings")
-
-        # icon column (#0): fixed width, centered
+        num_col = cols[0].cid
+        task_col = cols[1].cid
+        table_run_view.configure(show='tree headings')
         ICON_W = 46
-        tv.heading("#0", text="")
-        tv.column("#0", width=ICON_W, minwidth=ICON_W, stretch=False, anchor="center")
-
-        # Task column: stretch and left align
-        tv.heading(task_col, anchor="w")
-        tv.column(task_col, stretch=True, anchor="w", width=400, minwidth=120)
+        table_run_view.heading('#0', text='')
+        table_run_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
+        table_run_view.heading(num_col, anchor='w')
+        table_run_view.column(num_col, stretch=False, anchor='w', width=40, minwidth=40)
+        table_run_view.heading(task_col, anchor='w')
+        table_run_view.column(task_col, stretch=True, anchor='w', width=400, minwidth=120)
 
         self.after(0, self.hide_all_hscrollbars)
 
@@ -412,9 +409,14 @@ class Runner(tb.Frame):
     def on_task_done_ui(self, task_name, thread_name, status, count, total):
         key = str(status.value).upper()
         icon = self._status_icons.get(key)
-        self.table_run.insert_row(index=0, values=(task_name,))
+        self.table_run.insert_row(index=0, values=(count, task_name,))
         iid = self.table_run.view.get_children('')[0]
         self.table_run.view.item(iid, image=icon)
+        # highlight row that was just inserted
+        tv = self.table_run.view
+        tv.selection_set(iid)
+        tv.focus(iid)
+        tv.see(iid)
 
         if key == 'PASSED':
             self.passed_var.set(self.passed_var.get() + 1)
@@ -561,17 +563,21 @@ class Runner(tb.Frame):
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         except Exception as e:
-            raise ValueError(f'Failed to load JSON file: {pat}') from e
+            raise ValueError(f'Failed to load JSON file: {path}') from e
+
         if not isinstance(data, dict):
             raise ValueError('State JSON must be an object (key/value pairs)')
+
         if any(k.startswith('_') for k in data.keys()):
             raise ValueError('State file keys cannot start with an underscore (_) character')
+
         for key, value in data.items():
             if isinstance(value, (dict, list)):
                 value_str = json.dumps(value)
             else:
                 value_str = str(value)
             self._upsert_state_row(key, value_str, Path(path).name)
+
         self.table_state.autofit_columns()
 
     def get_state_from_table(self):
