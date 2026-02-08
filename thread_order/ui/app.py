@@ -486,7 +486,7 @@ class Runner(tb.Frame):
                 self._uiqueue_put(self._set_running_ui, False)
             finally:
                 self._running = False
-                # print('state' + json.dumps(self.scheduler.sanitized_state, indent=2, default=str))
+                print('state' + json.dumps(self.scheduler.sanitized_state, indent=2, default=str))
 
         threading.Thread(target=runner, name='tdrun-scheduler', daemon=True).start()
 
@@ -575,13 +575,18 @@ class Runner(tb.Frame):
         self.table_state.autofit_columns()
 
     def get_state_from_table(self):
+
+        def _parse_value(value):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
         state = {}
         tv = self.table_state.view
         for iid in tv.get_children(''):
-            values = tv.item(iid, 'values')
-            key = values[0]
-            value = values[1]
-            state[key] = value
+            key, value = tv.item(iid, 'values')[:2]
+            state[key] = _parse_value(value)
         return state
 
     def _upsert_state_row(self, key, value_str, source):
