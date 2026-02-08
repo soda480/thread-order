@@ -615,7 +615,7 @@ class Runner(tb.Frame):
                 " threads while maintaining a defined execution order.\n\n"
                 "Author: Emilio Reyes\n"
                 "Email: soda480@gmail.com\n\n"
-                "Package: thread-order[winui]\n"
+                "Package: thread-order[ui]\n"
                 f"Version: {version}\n"
                 "https://pypi.org/project/thread-order/\n\n"
             )
