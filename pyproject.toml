@@ -12,7 +12,6 @@ classifiers = [
     "Environment :: Console",
     "Environment :: X11 Applications",
     "Environment :: Win32 (MS Windows)",
-    "Environment :: GUI",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
