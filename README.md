@@ -29,7 +29,7 @@ Use it when you want:
 * DAG visualization — inspect your dependency graph with --graph
 * Simple, extensible design — no external dependencies
 * Prebuilt Docker image available to run tdrun with no local setup required
-* Optional GUI ([ui] extra): A Windows GUI for loading task files, previewing DAG dependencies, configuring workers/state, and running the scheduler with live progress and results
+* Optional GUI: A visual alternative to the CLI with deterministic execution visibility, live thread monitoring, and progress feedback
 
 ### About the DAG
 
@@ -65,7 +65,6 @@ You get:
 * Functions with failed dependendencies are skipped (default behaivor)
 * Progress Bar integration-ready - requires [progress1bar](https://pypi.org/project/progress1bar) package.
 * Thread Viewer integration-ready - requires [thread-viewer](https://pypi.org/project/thread-viewer/) package.
-* User Interface application via `ui` extra.
 
 ### CLI usage
 ```bash

@@ -1,0 +1,11 @@
+{
+    "aws_region": "us-west-2",
+    "service_name": "order-service",
+    "log_group_name": "/aws/lambda/order-service",
+    "assume_role_arn": "arn:aws:iam::111122223333:role/TestExecutionRole",
+    "max_retries": 3,
+    "invoke_max": true,
+    "storage": ["s3", "ebs", "efs", "glacier"],
+    "service_profile": {"name": "asdef234", "id": 1001, "active": true}
+
+}
