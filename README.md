@@ -28,7 +28,8 @@ Use it when you want:
 * CLI: `tdrun` — dependency-aware test runner with tag filtering
 * DAG visualization — inspect your dependency graph with --graph
 * Simple, extensible design — no external dependencies
-* Prebuilt Docker image available to run tdrun with no local setup required. 
+* Prebuilt Docker image available to run tdrun with no local setup required
+* Optional GUI ([ui] extra): A Windows GUI for loading task files, previewing DAG dependencies, configuring workers/state, and running the scheduler with live progress and results
 
 ### About the DAG
 
@@ -41,6 +42,11 @@ If you’re new to DAGs or want a quick refresher, this short primer is helpful:
 pip install thread-order
 ```
 
+To install GUI:
+
+```
+pip install thread-order[ui]
+```
 
 ## CLI Overview (`tdrun`)
 
@@ -59,6 +65,7 @@ You get:
 * Functions with failed dependendencies are skipped (default behaivor)
 * Progress Bar integration-ready - requires [progress1bar](https://pypi.org/project/progress1bar) package.
 * Thread Viewer integration-ready - requires [thread-viewer](https://pypi.org/project/thread-viewer/) package.
+* User Interface application via `ui` extra.
 
 ### CLI usage
 ```bash
@@ -218,6 +225,11 @@ docker run -it --rm -v $PWD:/work soda480/thread-order <<tdrun args>>
 ```
 
 `-it` parameter required for `--progress` and `--viewer` options
+
+## GUI Overview (`tdrun-ui`)
+
+![ui](https://github.com/soda480/thread-order/blob/main/docs/images/tdrun-ui.gif?raw=true)
+
 
 ## API Overview
 

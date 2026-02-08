@@ -53,7 +53,7 @@ $(VENV)/.stamp: pyproject.toml
 
 lint: venv
 	@printf "$(YELLOW)Linting source code...$(RESET)\n"
-	$(PY) -m flake8 -v $(PKG)/ --max-line-length 100 --ignore=E302,E305,W503
+	$(PY) -m flake8 -v $(PKG)/ --max-line-length 100 --ignore=E302,E305,W503,F405,F403
 
 test: venv
 	@printf "$(YELLOW)Running unit tests...$(RESET)\n"
