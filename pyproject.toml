@@ -42,7 +42,7 @@ include = ["thread_order*"]
 "Homepage" = "https://github.com/soda480/thread-order"
 
 [project.scripts]
-tdrun = "thread_order.runner:main"
+tdrun = "thread_order.cli.app:main"
 tdrun-ui = "thread_order.ui.app:main"
 
 [project.optional-dependencies]
