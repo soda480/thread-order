@@ -3,75 +3,96 @@ import re
 import sys
 import threading
 import logging
-try:
-    from colorama import init
-    from colorama import Fore, Style
-    HAS_COLOR = True
-except ImportError:
-    HAS_COLOR = False
+from colorama import init
+from colorama import Fore, Style
 
-if HAS_COLOR:
+def validate_highlights(highlights):
+    if not isinstance(highlights, (list, tuple)):
+        raise TypeError('highlights must be a list/tuple of (regex, color) pairs')
+    for item in highlights:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise TypeError('each highlight must be a (regex, color) pair')
+        pattern, _ = item
+        if not isinstance(pattern, re.Pattern):
+            raise TypeError('highlight pattern must be a compiled regex (re.Pattern)')
+    return list(highlights)
 
-    class ColoredFormatter(logging.Formatter):
-        LEVEL_COLORS = {
-            logging.DEBUG: Style.BRIGHT + Fore.CYAN,
-            logging.INFO: Style.BRIGHT + Fore.BLUE,
-            logging.WARNING: Style.BRIGHT + Fore.YELLOW,
-            logging.ERROR: Style.BRIGHT + Fore.RED,
-            logging.CRITICAL: Style.BRIGHT + Fore.RED,
-        }
-        DEFAULT_HIGHLIGHTS = [
-            (re.compile(r'\bPASSED\b', re.IGNORECASE), Fore.GREEN),
-            (re.compile(r'\bFAILED\b', re.IGNORECASE), Fore.RED),
-            (re.compile(r'\bSKIPPED\b', re.IGNORECASE), Fore.YELLOW),
-            (re.compile(r'Scheduler::State:\s*(\{.*?^})', re.DOTALL | re.MULTILINE), Fore.MAGENTA)
-        ]
+class ColoredFormatter(logging.Formatter):
+    LEVEL_COLORS = {
+        logging.DEBUG: Style.BRIGHT + Fore.CYAN,
+        logging.INFO: Style.BRIGHT + Fore.BLUE,
+        logging.WARNING: Style.BRIGHT + Fore.YELLOW,
+        logging.ERROR: Style.BRIGHT + Fore.RED,
+        logging.CRITICAL: Style.BRIGHT + Fore.RED,
+    }
+    DEFAULT_HIGHLIGHTS = [
+        (re.compile(r'\bPASSED\b', re.IGNORECASE), Fore.GREEN),
+        (re.compile(r'\bFAILED\b', re.IGNORECASE), Fore.RED),
+        (re.compile(r'\bSKIPPED\b', re.IGNORECASE), Fore.YELLOW),
+        (re.compile(r'Scheduler::State:\s*(\{.*?^})', re.DOTALL | re.MULTILINE), Fore.MAGENTA)
+    ]
 
-        def __init__(self, workers, *args, **kwargs):
-            self.highlights = kwargs.pop('highlights', []) or self.DEFAULT_HIGHLIGHTS
-            self.verbose = kwargs.pop('verbose', False)
-            super().__init__(*args, **kwargs)
+    def __init__(self, workers, *args, **kwargs):
+        highlights = kwargs.pop('highlights', [])
+        if highlights is not None:
+            validated = validate_highlights(highlights)
+            self.highlights = [*self.DEFAULT_HIGHLIGHTS, *validated]
+        else:
+            self.highlights = list(self.DEFAULT_HIGHLIGHTS)
+        self.verbose = kwargs.pop('verbose', False)
+        super().__init__(*args, **kwargs)
 
-        def _apply_highlights(self, message):
-            out = message
-            for pattern, color in self.highlights:
-                def replace(m):
-                    text = m.group(0)
-                    return f'{color}{text}{Style.RESET_ALL}{Fore.WHITE}'
-                out = pattern.sub(replace, out)
-            return out
+    def _apply_highlights(self, message):
+        out = message
+        for pattern, color in self.highlights:
+            def replace(m):
+                text = m.group(0)
+                return f'{color}{text}{Style.RESET_ALL}{Fore.WHITE}'
+            out = pattern.sub(replace, out)
+        return out
 
-        def format(self, record):
-            timestamp = self.formatTime(record, self.datefmt)
-            level_color = self.LEVEL_COLORS.get(record.levelno, Fore.WHITE)
+    def format(self, record):
+        timestamp = self.formatTime(record, self.datefmt)
+        level_color = self.LEVEL_COLORS.get(record.levelno, Fore.WHITE)
 
-            raw_msg = record.getMessage()
-            colored_msg = self._apply_highlights(raw_msg)
+        raw_msg = record.getMessage()
+        colored_msg = self._apply_highlights(raw_msg)
 
-            # only log thread name if it's not MainThread
-            # to avoid cluttering the logs with 'MainThread' entries
-            if record.threadName == 'MainThread':
-                thread_name = ''
-            else:
-                thread_name = f'[{record.threadName}] '
+        # only log thread name if it's not MainThread
+        # to avoid cluttering the logs with 'MainThread' entries
+        if record.threadName == 'MainThread':
+            thread_name = ''
+        else:
+            thread_name = f'[{record.threadName}] '
 
-            if self.verbose:
-                msg = (
-                    f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
-                    f"{level_color}{record.levelname:<5}{Style.RESET_ALL} "
-                    f"{thread_name}"
-                    f"{Fore.WHITE}{record.funcName}: {colored_msg}{Style.RESET_ALL}"
-                )
-            else:
-                msg = (
-                    f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
-                    f"{thread_name}"
-                    f"{colored_msg}{Style.RESET_ALL}"
-                )
-            if record.exc_info:
-                msg += '\n' + self.formatException(record.exc_info)
+        if self.verbose:
+            msg = (
+                f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
+                f"{level_color}{record.levelname:<5}{Style.RESET_ALL} "
+                f"{thread_name}"
+                f"{Fore.WHITE}{record.funcName}: {colored_msg}{Style.RESET_ALL}"
+            )
+        else:
+            msg = (
+                f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
+                f"{thread_name}"
+                f"{colored_msg}{Style.RESET_ALL}"
+            )
+        if record.exc_info:
+            msg += '\n' + self.formatException(record.exc_info)
 
-            return msg
+        return msg
+
+    def _validate_highlights(self, highlights):
+        if not isinstance(highlights, (list, tuple)):
+            raise TypeError('highlights must be a list/tuple of (regex, color) pairs')
+        for item in highlights:
+            if not isinstance(item, (list, tuple)) or len(item) != 2:
+                raise TypeError('each highlight must be a (regex, color) pair')
+            pattern, _ = item
+            if not isinstance(pattern, re.Pattern):
+                raise TypeError('highlight pattern must be a compiled regex (re.Pattern)')
+        return list(highlights)
 
 class MainThreadAwareFormatter(logging.Formatter):
 
@@ -109,14 +130,8 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
         '%(asctime)s %(levelname)-5s [%(threadName)s] %(funcName)s: %(message)s')
 
     if add_stream_handler:
-        if HAS_COLOR:
-            init(autoreset=False)
-            stream_formatter = ColoredFormatter(workers, highlights=highlights, verbose=verbose)
-        else:
-            main_fmt = '%(asctime)s %(message)s'
-            thread_fmt = '%(asctime)s [%(threadName)s] %(message)s'
-            stream_formatter = MainThreadAwareFormatter(main_fmt, thread_fmt, workers)
-
+        init(autoreset=False)
+        stream_formatter = ColoredFormatter(workers, highlights=highlights, verbose=verbose)
         stream_handler = logging.StreamHandler(sys.stderr)
         stream_handler.setFormatter(stream_formatter)
         stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)

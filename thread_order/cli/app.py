@@ -4,7 +4,12 @@ import json
 from contextlib import nullcontext
 from pathlib import Path
 from thread_order import (
-    Scheduler, ThreadProxyLogger, default_workers, load_and_collect_functions, register_functions)
+    Scheduler,
+    ThreadProxyLogger,
+    default_workers,
+    load_and_collect_functions,
+    register_functions,
+    validate_highlights)
 from thread_order.graph_summary import format_graph_summary
 try:
     from progress1bar import ProgressBar
@@ -177,19 +182,16 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
         'skip_dependents': args.skip_deps
     }
     # prefer module-provided logging hook if available
-    setup_logging_function = getattr(module, 'setup_logging', None)
-    if callable(setup_logging_function):
-        setup_logging_function(
-            args.effective_workers,
-            verbose=args.verbose,
-            add_stream_handler=not args.progress and not args.viewer,
-            add_file_handler=args.log)
-    else:
-        scheduler_kwargs['setup_logging'] = True
-        scheduler_kwargs['verbose'] = args.verbose
-        scheduler_kwargs['add_stream_handler'] = not args.progress and not args.viewer
-        scheduler_kwargs['add_file_handler'] = args.log
+    add_logging_highlights_function = getattr(module, 'add_logging_highlights', None)
+    if callable(add_logging_highlights_function):
+        highlights = add_logging_highlights_function()
+        validated_highlights = validate_highlights(highlights)
+        scheduler_kwargs['highlights'] = validated_highlights
 
+    scheduler_kwargs['setup_logging'] = True
+    scheduler_kwargs['verbose'] = args.verbose
+    scheduler_kwargs['add_stream_handler'] = not args.progress and not args.viewer
+    scheduler_kwargs['add_file_handler'] = args.log
     return scheduler_kwargs
 
 def validate_args(args):

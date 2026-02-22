@@ -12,6 +12,7 @@ __all__ = [
     'default_workers',
     'load_and_collect_functions',
     'register_functions',
+    'validate_highlights',
     '__version__']
 
 def __getattr__(name):
@@ -42,6 +43,9 @@ def __getattr__(name):
     if name == 'register_functions':
         from .scheduler import register_functions
         return register_functions
+    if name == 'validate_highlights':
+        from .logger import validate_highlights
+        return validate_highlights
     # If the requested attribute isn't one of the known top-level symbols,
     # try to lazily import a submodule (e.g. `thread_order.scheduler`) so
     # attribute lookups such as those used by mocking/patching succeed.
@@ -53,7 +57,7 @@ def __getattr__(name):
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.3.0'
+    __version__ = '1.3.1'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'
