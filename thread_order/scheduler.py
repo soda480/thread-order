@@ -32,7 +32,7 @@ class Scheduler:
     """
     def __init__(self, workers=None, setup_logging=False, add_stream_handler=True,
                  state=None, store_results=True, clear_results_on_start=True, verbose=False,
-                 skip_dependents=False, add_file_handler=True):
+                 skip_dependents=False, add_file_handler=True, highlights=None):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
@@ -83,7 +83,8 @@ class Scheduler:
         if setup_logging:
             configure_logging(self._workers, prefix=self._prefix, verbose=verbose,
                               add_stream_handler=add_stream_handler,
-                              add_file_handler=add_file_handler)
+                              add_file_handler=add_file_handler,
+                              highlights=highlights)
         self._skip_dependents = skip_dependents
 
     def register(self, obj, name, after=None, with_state=False):

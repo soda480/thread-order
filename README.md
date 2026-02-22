@@ -176,29 +176,26 @@ These appear in `initial_state` and can be processed in your module’s `setup_s
 
 This allows your module to compute initial state based on CLI parameters.
 
-## Custom Logging
+## Optional Highlights
 
-If a module defines a `setup_logging()` function, `tdrun` will automatically detect and invoke it during module initialization. This allows the module to configure its own logging behavior in a consistent and structured way while remaining compatible with the execution model.
+`tdrun` CLI supports customizable log highlighting. In addition to the built-in highlight rules (e.g. PASSED, FAILED, SKIPPED), you may provide additional highlight patterns to emphasize important output.
 
-```Python
-def setup_logging(
-    workers,                    # Effective worker count resolved by CLI
-    verbose=False,              # Enable verbose (debug-level) logging
-    add_stream_handler=False,   # Attach console handler (disabled when progress/viewer active)
-    add_file_handler=False      # Attach file handler when --log is enabled
-):
-```
-
-At runtime, `tdrun` will invoke it as:
+If a module defines an `add_logging_highlights()` function, it should return a list of (compiled_regex, color) pairs:
 
 ```Python
-setup_logging(
-    args.workers,  # effective workers
-    verbose=args.verbose,
-    add_stream_handler=not args.progress and not args.viewer,
-    add_file_handler=args.log,
-)
+import re
+from colorama import Fore
+
+def add_logging_highlights():
+  return [
+      (re.compile(r'\bCRITICAL\b'), Fore.RED),
+      (re.compile(r'Environment:\s+\w+'), Fore.CYAN),
+  ]
 ```
+
+When logging is enabled, these rules are appended to the default highlights and applied to log output during execution.
+
+This allows modules or callers to visually emphasize important state, metadata, or runtime signals without modifying the core logging configuration.
 
 ### DAG Inspection
 
@@ -269,6 +266,7 @@ class Scheduler(
     setup_logging=False,          # enable built-in logging config
     add_stream_handler=True,      # attach stream handler to logger
     add_file_handler=True,        # attach file handlers for each thread to logger
+    highlights=None,              # Optional list of highlight rules applied to log output
     verbose=False,                # enable extra debug logging on stream handler
     skip_dependents=False         # skip dependents when prerequisites fail
 )

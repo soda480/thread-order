@@ -4,7 +4,7 @@ import random
 import logging
 from faker import Faker
 from colorama import Fore, Style
-from thread_order import mark, configure_logging, ThreadProxyLogger
+from thread_order import mark, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -15,21 +15,12 @@ def setup_state(state):
         'faker': Faker()
     })
 
-def setup_logging(workers, verbose=False, add_stream_handler=False, add_file_handler=False):
+def add_logging_highlights():
     highlights = [
         (re.compile(r'Employee:\s*"([^"]+)"'), Style.BRIGHT + Fore.YELLOW),
-        (re.compile(r'\bAssertionError: Intentional Failure\b', re.IGNORECASE), Fore.RED),
-        (re.compile(r'\bPASSED\b', re.IGNORECASE), Fore.GREEN),
-        (re.compile(r'\bFAILED\b', re.IGNORECASE), Fore.RED),
-        (re.compile(r'\bSKIPPED\b', re.IGNORECASE), Fore.YELLOW),
-        (re.compile(r'Scheduler::State:\s*(\{.*?^})', re.DOTALL | re.MULTILINE), Fore.MAGENTA)
+        (re.compile(r'\bAssertionError: Intentional Failure\b', re.IGNORECASE), Fore.RED)
     ]
-    configure_logging(
-        workers,
-        add_file_handler=add_file_handler,
-        add_stream_handler=add_stream_handler,
-        highlights=highlights,
-        verbose=verbose)
+    return highlights
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
