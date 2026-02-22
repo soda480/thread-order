@@ -1,4 +1,3 @@
-import re
 import sys
 import argparse
 import json
@@ -147,19 +146,12 @@ def _setup_output(scheduler, args):
         def on_task_done(name, thread_name, status, count, total):
             _percent = int((count / total) * 100)
             percent = f'{status.value} [{_percent:3d}% ]'
-            base = f'[{_pad_thread_name(thread_name, args.effective_workers)}] {name}' \
-                if thread_name else name
+            base = f'[{thread_name}] {name}' if thread_name else name
             dots = '.' * max(0, 75 - len(base) - len(percent))
             logger.info(f'{base} {dots} {percent}')
 
         scheduler.on_task_done(on_task_done, total)
         return nullcontext()
-
-def _pad_thread_name(name, workers):
-    """ pad thread name numbers with leading zeros for consistent width
-    """
-    width = len(str(workers - 1))
-    return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(width), name)
 
 def _parse_tags_filter(tags):
     """ parse comma-separated tag list into a normalized filter list
@@ -187,7 +179,11 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
     # prefer module-provided logging hook if available
     setup_logging_function = getattr(module, 'setup_logging', None)
     if callable(setup_logging_function):
-        setup_logging_function(args.effective_workers, args.verbose)
+        setup_logging_function(
+            args.effective_workers,
+            verbose=args.verbose,
+            add_stream_handler=not args.progress and not args.viewer,
+            add_file_handler=args.log)
     else:
         scheduler_kwargs['setup_logging'] = True
         scheduler_kwargs['verbose'] = args.verbose

@@ -176,6 +176,30 @@ These appear in `initial_state` and can be processed in your module’s `setup_s
 
 This allows your module to compute initial state based on CLI parameters.
 
+## Custom Logging
+
+If a module defines a `setup_logging()` function, `tdrun` will automatically detect and invoke it during module initialization. This allows the module to configure its own logging behavior in a consistent and structured way while remaining compatible with the execution model.
+
+```Python
+def setup_logging(
+    workers,                    # Effective worker count resolved by CLI
+    verbose=False,              # Enable verbose (debug-level) logging
+    add_stream_handler=False,   # Attach console handler (disabled when progress/viewer active)
+    add_file_handler=False      # Attach file handler when --log is enabled
+):
+```
+
+At runtime, `tdrun` will invoke it as:
+
+```Python
+setup_logging(
+    args.workers,  # effective workers
+    verbose=args.verbose,
+    add_stream_handler=not args.progress and not args.viewer,
+    add_file_handler=args.log,
+)
+```
+
 ### DAG Inspection
 
 Use graph-only mode to inspect dependency structure:
