@@ -1,20 +1,41 @@
+import re
 import time
 import random
+import logging
 from faker import Faker
-from thread_order import mark, ThreadProxyLogger
+from colorama import Fore, Style
+from thread_order import mark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
+
+logging.getLogger('faker').setLevel(logging.WARNING)
 
 def setup_state(state):
     state.update({
         'faker': Faker()
     })
 
+def setup_logging(workers, verbose=False, add_stream_handler=False, add_file_handler=False):
+    highlights = [
+        (re.compile(r'Employee:\s*"([^"]+)"'), Style.BRIGHT + Fore.YELLOW),
+        (re.compile(r'\bAssertionError: Intentional Failure\b', re.IGNORECASE), Fore.RED),
+        (re.compile(r'\bPASSED\b', re.IGNORECASE), Fore.GREEN),
+        (re.compile(r'\bFAILED\b', re.IGNORECASE), Fore.RED),
+        (re.compile(r'\bSKIPPED\b', re.IGNORECASE), Fore.YELLOW),
+        (re.compile(r'Scheduler::State:\s*(\{.*?^})', re.DOTALL | re.MULTILINE), Fore.MAGENTA)
+    ]
+    configure_logging(
+        workers,
+        add_file_handler=add_file_handler,
+        add_stream_handler=add_stream_handler,
+        highlights=highlights,
+        verbose=verbose)
+
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
         last_name = state['faker'].last_name()
     sleep = random.uniform(.5, 2.5)
-    logger.debug(f'{name} "{last_name}" running - sleeping {sleep:.2f}s')
+    logger.debug(f'{name} Employee: "{last_name}" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:
         assert False, 'Intentional Failure'
