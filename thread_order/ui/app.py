@@ -214,7 +214,7 @@ class Runner(tb.Frame):
 
         tv = self.table_tasks.view
         self.tasks_vscroll = tb.Scrollbar(tasks_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self.tasks_vscroll.set)
+        tv.configure(yscrollcommand=self._autohide_scrollbar(self.tasks_vscroll))
 
         # pack scrollbar FIRST so it always keeps width
         self.tasks_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
@@ -282,7 +282,7 @@ class Runner(tb.Frame):
 
         tv = self.table_threads.view
         self.threads_vscroll = tb.Scrollbar(threads_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self.threads_vscroll.set)
+        tv.configure(yscrollcommand=self._autohide_scrollbar(self.threads_vscroll))
 
         # pack scrollbar FIRST so it always keeps width
         self.threads_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
@@ -342,7 +342,7 @@ class Runner(tb.Frame):
         self.table_run.load_table_data()
         tv = self.table_run.view
         self.run_vscroll = tb.Scrollbar(run_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self.run_vscroll.set)
+        tv.configure(yscrollcommand=self._autohide_scrollbar(self.run_vscroll))
 
         # pack scrollbar FIRST
         self.run_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
@@ -868,6 +868,23 @@ class Runner(tb.Frame):
         tv.heading(key_col, anchor='w')
         tv.heading(value_col, anchor='w')
         tv.heading(source_col, anchor='w')
+
+    def _autohide_scrollbar(self, scrollbar):
+        def _wrapped(first, last):
+            first, last = float(first), float(last)
+
+            if first <= 0.0 and last >= 1.0:
+                # content fully visible → hide scrollbar
+                if scrollbar.winfo_ismapped():
+                    scrollbar.pack_forget()
+            else:
+                # overflow → show scrollbar
+                if not scrollbar.winfo_ismapped():
+                    scrollbar.pack(side=RIGHT, fill=Y, padx=(4, 0))
+
+            scrollbar.set(first, last)
+
+        return _wrapped
 
 def _maybe_call_setup_state(module, initial_state):
     """ invoke module-level setup_state(initial_state) if defined
