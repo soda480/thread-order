@@ -162,7 +162,7 @@ class Runner(tb.Frame):
 
         tv = self.table_state.view
         self.state_vscroll = tb.Scrollbar(state_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self.state_vscroll.set)
+        tv.configure(yscrollcommand=self._autohide_scrollbar(self.state_vscroll))
 
         # pack scrollbar FIRST
         self.state_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
@@ -221,7 +221,6 @@ class Runner(tb.Frame):
 
         # then pack the table to take remaining space
         self.table_tasks.pack(side=LEFT, fill=BOTH, expand=True)
-        self._attach_tasks_vscroll()
 
         table_tasks_view = self.table_tasks.view
         table_tasks_cols = self.table_tasks.get_columns()
@@ -451,7 +450,6 @@ class Runner(tb.Frame):
             self.table_tasks.insert_rows(0, rowdata=preview_scheduler.graph.dependency_counts)
             self._renumber_table(self.table_tasks)
             self.table_tasks.autofit_columns()
-            self._attach_tasks_vscroll()
 
             total = len(preview_scheduler.graph.nodes())
             self.total_var.set(total)
@@ -848,13 +846,6 @@ class Runner(tb.Frame):
         self.duration_var.set(f"{hours:02d}:{mins:02d}:{secs:02d}")
         # was 500ms; 1s is enough since you display seconds
         self._elapsed_job = self.after(1000, self._tick_elapsed)
-
-    def _attach_tasks_vscroll(self):
-        tv = self.table_tasks.view
-        # re-attach every time because Tableview may reset these on data ops
-        self.tasks_vscroll.configure(command=tv.yview)
-        tv.configure(yscrollcommand=self.tasks_vscroll.set)
-        tv.update_idletasks()
 
     def _apply_state_column_layout(self):
         tv = self.table_state.view
