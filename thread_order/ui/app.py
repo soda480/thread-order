@@ -57,26 +57,27 @@ class Runner(tb.Frame):
         self.pack()
 
         # menubar
-        menubar = tk.Menu(self.master)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label='Open Tasks', command=self.open_tasks)
-        file_menu.add_command(label='Open State', command=self.open_state)
-        file_menu.add_separator()
-        file_menu.add_command(label='Exit', command=self.master.quit)
-        menubar.add_cascade(label='File', menu=file_menu)
+        self.menubar = tk.Menu(self.master)
 
-        options_menu = tk.Menu(menubar, tearoff=0)
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.file_menu.add_command(label='Open Tasks', command=self.open_tasks)
+        self.file_menu.add_command(label='Open State', command=self.open_state)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label='Exit', command=self.master.quit)
+        self.menubar.add_cascade(label='File', menu=self.file_menu)
+
+        self.options_menu = tk.Menu(self.menubar, tearoff=0)
         self.log_all_var = tk.BooleanVar(value=False)
-        options_menu.add_checkbutton(label='Log All', variable=self.log_all_var)
+        self.options_menu.add_checkbutton(label='Log All', variable=self.log_all_var)
         self.skip_dependents_var = tk.BooleanVar(value=False)
-        options_menu.add_checkbutton(label='Skip Dependents', variable=self.skip_dependents_var)
-        menubar.add_cascade(label='Options', menu=options_menu)
+        self.options_menu.add_checkbutton(label='Skip Dependents', variable=self.skip_dependents_var)
+        self.menubar.add_cascade(label='Options', menu=self.options_menu)
 
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label='About', command=self.show_about)
-        menubar.add_cascade(label='Help', menu=help_menu)
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.help_menu.add_command(label='About', command=self.show_about)
+        self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
-        self.master.config(menu=menubar)
+        self.master.config(menu=self.menubar)
 
         top_frame = tb.Frame(self.master, padding=4)
         top_frame.pack(fill=BOTH, expand=False)
@@ -131,7 +132,7 @@ class Runner(tb.Frame):
             justify='left',
             textvariable=self.key_value)
         entry_key_value.pack(side=LEFT, padx=4, pady=4, fill=X, expand=True)
-        button_key_value = tb.Button(
+        self.button_key_value = tb.Button(
             frame_state_top,
             text='Add Key Value',
             command=self.add_key_value,
@@ -140,8 +141,8 @@ class Runner(tb.Frame):
             bootstyle='primary')
         entry_key_value.bind(
             '<Return>',
-            lambda e: button_key_value.invoke())
-        button_key_value.pack(side=LEFT, padx=4, pady=4)
+            lambda e: self.button_key_value.invoke())
+        self.button_key_value.pack(side=LEFT, padx=4, pady=4)
         self.table_state = Tableview(
             master=frame_state_bot,
             coldata=['Key', 'Value', 'Source', ''],
@@ -503,10 +504,18 @@ class Runner(tb.Frame):
     def _set_running_ui(self, running):
         self.spinbox_workers.configure(state='disabled' if running else 'enabled')
         self.run_button.configure(state='disabled' if running else 'enabled')
+        self.button_key_value.configure(state='disabled' if running else 'enabled')
+        self._set_menu_state('disabled' if running else 'normal')
         if running:
             self._show_running_footer()
         else:
             self._hide_running_footer()
+
+    def _set_menu_state(self, state):
+        # state is 'normal' or 'disabled'
+        # disable top-level cascades so nothing inside can be clicked
+        self.menubar.entryconfig('File', state=state)
+        self.menubar.entryconfig('Options', state=state)
 
     def run_tasks(self):
         if getattr(self, '_running', False) or not hasattr(self, '_marked_functions'):
