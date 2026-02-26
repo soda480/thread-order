@@ -1,5 +1,6 @@
 import queue
 import random
+import time
 import threading
 import json
 from pathlib import Path
@@ -49,6 +50,8 @@ class Runner(tb.Frame):
         self._uiqueue = queue.Queue()
         self._poll_uiqueue()
         self._running = False
+        self._run_t0 = None
+        self._elapsed_job = None
 
     def setupui(self):
         self.pack()
@@ -299,7 +302,7 @@ class Runner(tb.Frame):
             font=('Segoe UI', 8),
             anchor='w'
         )
-        self.duration_label.pack(side=LEFT, fill=X, expand=False)
+        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 8))
         self.running_frame = tb.Frame(self.footer)
         self.progress_var = tb.IntVar(value=0)
         self.progress = tb.Progressbar(
@@ -307,7 +310,7 @@ class Runner(tb.Frame):
             mode='determinate',
             variable=self.progress_var,
         )
-        self.progress.pack(side=LEFT, fill=X, expand=True)
+        self.progress.pack(side=LEFT, fill=X, expand=True, padx=(8, 0))
         self.percent_var = tb.StringVar(value="")
         self.percent_label = tb.Label(
             self.running_frame,
@@ -417,9 +420,15 @@ class Runner(tb.Frame):
 
     def _on_scheduler_start_ui(self, meta):
         self._set_running_ui(True)
-        self.duration_var.set('')
+
+        # determinate progress from the start
+        self.progress.configure(mode='determinate')
         self.progress_var.set(0)
         self.percent_var.set('0%')
+
+        # elapsed timer
+        self.duration_var.set('00:00:00')
+        self._start_elapsed_ticker()
 
     def on_task_run_ui(self, task_name, thread_name):
         thread_number = _get_thread_number(thread_name)
@@ -486,6 +495,7 @@ class Runner(tb.Frame):
         self.percent_var.set(f'{pct}%')
 
     def on_scheduler_done_ui(self, summary):
+        self._stop_elapsed_ticker()
         self._set_running_ui(False)
         duration = summary['duration']
         self.duration_var.set(f'Completed in {duration:.2f}s')
@@ -528,9 +538,10 @@ class Runner(tb.Frame):
                 self.scheduler.on_scheduler_done(self.on_scheduler_done)
                 self.scheduler.start()
             except (Exception, SystemExit) as e:
+                self._uiqueue_put(self._set_running_ui, False)
+                self._uiqueue_put(self._stop_elapsed_ticker)
                 # surface the error on the UI thread
                 self._uiqueue_put(messagebox.showerror, 'Run failed', str(e))
-                self._uiqueue_put(self._set_running_ui, False)
             finally:
                 self._running = False
                 print('state' + json.dumps(self.scheduler.sanitized_state, indent=2, default=str))
@@ -719,6 +730,38 @@ class Runner(tb.Frame):
             thread_name = tv.item(iid, 'values')[0]
             tv.item(iid, image=grey)
             self._thread_icon_color[thread_name] = self._thread_icon_grey
+
+    def _start_elapsed_ticker(self):
+        # cancel existing ticker if any
+        if self._elapsed_job is not None:
+            try:
+                self.after_cancel(self._elapsed_job)
+            except Exception:
+                pass
+            self._elapsed_job = None
+
+        self._run_t0 = time.monotonic()
+        self._tick_elapsed()
+
+    def _stop_elapsed_ticker(self):
+        if self._elapsed_job is not None:
+            try:
+                self.after_cancel(self._elapsed_job)
+            except Exception:
+                pass
+            self._elapsed_job = None
+
+    def _tick_elapsed(self):
+        if not self._running or self._run_t0 is None:
+            return
+
+        elapsed = int(time.monotonic() - self._run_t0)
+        hours = elapsed // 3600
+        mins = (elapsed % 3600) // 60
+        secs = elapsed % 60
+        self.duration_var.set(f"{hours:02d}:{mins:02d}:{secs:02d}")
+        # was 500ms; 1s is enough since you display seconds
+        self._elapsed_job = self.after(1000, self._tick_elapsed)
 
 def _maybe_call_setup_state(module, initial_state):
     """ invoke module-level setup_state(initial_state) if defined
