@@ -157,6 +157,8 @@ class Runner(tb.Frame):
         self.table_state.pack(fill=BOTH, expand=True)
         self.table_state.view.column(self.table_state.get_columns()[-1].cid, stretch=True)
         self.table_state.autofit_columns()
+        table_state_view = self.table_state.view
+        table_state_view.configure(selectmode='none')
 
         # TASKS TAB
         tasks_frame = tb.Frame(tab2)
@@ -233,7 +235,7 @@ class Runner(tb.Frame):
         table_threads_view.column(
             table_threads_task_col, stretch=True, anchor="w", width=400, minwidth=120)
         # show icon column (#0) for thread table
-        table_threads_view.configure(show='tree headings')
+        table_threads_view.configure(show='tree headings', selectmode='none')
         table_threads_view.heading('#0', text='')
         ICON_W = 46
         table_threads_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
