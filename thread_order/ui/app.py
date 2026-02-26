@@ -1,4 +1,5 @@
 import queue
+import random
 import threading
 import json
 from pathlib import Path
@@ -29,6 +30,21 @@ class Runner(tb.Frame):
             'FAILED': self._make_swatch('#e74c3c'),  # red
             'SKIPPED': self._make_swatch('#f1c40f'),  # yellow
         }
+
+        # thread icons
+        self._thread_icon_size = 12
+        self._thread_icon_grey = self.colors.light
+        self._thread_icon_palette = [
+            "#E74C3C", "#9B59B6", "#3498DB", "#1ABC9C", "#2ECC71",
+            "#F1C40F", "#E67E22", "#16A085", "#2980B9", "#8E44AD",
+            "#C0392B", "#27AE60", "#F39C12",
+            "#D35400", "#2C3E50", "#34495E", "#7F8C8D",
+            "#00B894", "#0984E3", "#6C5CE7", "#E84393",
+            "#00CEC9", "#A29BFE",
+        ]
+        self._thread_icon_cache = {}     # color -> PhotoImage (keep refs!)
+        self._thread_icon_color = {}     # thread_name -> current color
+
         self.setupui()
         self._uiqueue = queue.Queue()
         self._poll_uiqueue()
@@ -212,6 +228,14 @@ class Runner(tb.Frame):
         table_threads_view.heading(table_threads_task_col, anchor="w")
         table_threads_view.column(
             table_threads_task_col, stretch=True, anchor="w", width=400, minwidth=120)
+        # show icon column (#0) for thread table
+        table_threads_view.configure(show='tree headings')
+        table_threads_view.heading('#0', text='')
+        ICON_W = 46
+        table_threads_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
+
+        # set initial grey icons
+        self._init_thread_icons()
 
         # RUN TAB
         run_frame = tb.Frame(tab4)
@@ -313,6 +337,8 @@ class Runner(tb.Frame):
         self.table_threads.insert_rows(0, rowdata=[(f'thread_{i}', '') for i in range(workers)])
         self.table_threads.autofit_columns()
 
+        self._init_thread_icons()
+
     def open_tasks(self):
         try:
             path = filedialog.askopenfilename(
@@ -397,14 +423,27 @@ class Runner(tb.Frame):
 
     def on_task_run_ui(self, task_name, thread_name):
         thread_number = _get_thread_number(thread_name)
-        if thread_number is not None:
-            self.active_var.set(self.active_var.get() + 1)
-            self.queued_var.set(max(0, self.queued_var.get() - 1))
-            children = self.table_threads.view.get_children('')
-            if thread_number >= len(children):
-                return
-            iid = children[thread_number]
-            self.table_threads.view.item(iid, values=(thread_name, task_name))
+        if thread_number is None:
+            return
+
+        self.active_var.set(self.active_var.get() + 1)
+        self.queued_var.set(max(0, self.queued_var.get() - 1))
+
+        children = self.table_threads.view.get_children('')
+        if thread_number >= len(children):
+            return
+
+        tv = self.table_threads.view
+        iid = children[thread_number]
+
+        # update values
+        tv.item(iid, values=(thread_name, task_name))
+
+        # update icon color (must change if reassigned)
+        prev = self._thread_icon_color.get(thread_name, self._thread_icon_grey)
+        new_color = self._pick_new_thread_color(prev)
+        tv.item(iid, image=self._get_thread_icon(new_color))
+        self._thread_icon_color[thread_name] = new_color
 
     def on_task_done_ui(self, task_name, thread_name, status, count, total):
         key = str(status.value).upper()
@@ -429,8 +468,14 @@ class Runner(tb.Frame):
         if thread_number is not None:
             self.active_var.set(self.active_var.get() - 1)
             self.closed_var.set(self.closed_var.get() + 1)
-            iid = self.table_threads.view.get_children('')[thread_number]
-            self.table_threads.view.item(iid, values=(thread_name, ''))
+
+            tv = self.table_threads.view
+            iid = tv.get_children('')[thread_number]
+            tv.item(iid, values=(thread_name, ''))
+
+            # back to grey when idle
+            tv.item(iid, image=self._get_thread_icon(self._thread_icon_grey))
+            self._thread_icon_color[thread_name] = self._thread_icon_grey
         else:
             self.closed_var.set(self.closed_var.get() + 1)
             self.queued_var.set(max(0, self.queued_var.get() - 1))
@@ -641,11 +686,39 @@ class Runner(tb.Frame):
         # tables
         self.table_run.delete_rows()
 
-        # clear thread assignments
+        # clear thread assignments + reset icons
         tv = self.table_threads.view
         for iid in tv.get_children(''):
             thread_name, *_ = tv.item(iid, 'values')
             tv.item(iid, values=(thread_name, ''))
+
+        self._init_thread_icons()
+
+    def _get_thread_icon(self, color):
+        img = self._thread_icon_cache.get(color)
+        if img:
+            return img
+        size = self._thread_icon_size
+        img = tk.PhotoImage(width=size * 2, height=size)
+        img.put(color, to=(0, 0, size * 2, size))
+        self._thread_icon_cache[color] = img
+        return img
+
+    def _pick_new_thread_color(self, prev):
+        choices = [c for c in self._thread_icon_palette if c != prev]
+        if not choices:
+            return self._thread_icon_palette[0]
+        return random.choice(choices)
+
+    def _init_thread_icons(self):
+        tv = self.table_threads.view
+        grey = self._get_thread_icon(self._thread_icon_grey)
+        self._thread_icon_color.clear()
+
+        for iid in tv.get_children(''):
+            thread_name = tv.item(iid, 'values')[0]
+            tv.item(iid, image=grey)
+            self._thread_icon_color[thread_name] = self._thread_icon_grey
 
 def _maybe_call_setup_state(module, initial_state):
     """ invoke module-level setup_state(initial_state) if defined
