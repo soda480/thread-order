@@ -303,7 +303,7 @@ class Runner(tb.Frame):
             font=('Segoe UI', 8),
             anchor='w'
         )
-        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 8))
+        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 4))
         self.running_frame = tb.Frame(self.footer)
         self.progress_var = tb.IntVar(value=0)
         self.progress = tb.Progressbar(
