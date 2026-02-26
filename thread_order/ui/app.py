@@ -303,7 +303,7 @@ class Runner(tb.Frame):
             font=('Segoe UI', 8),
             anchor='w'
         )
-        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 4))
+        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 2))
         self.running_frame = tb.Frame(self.footer)
         self.progress_var = tb.IntVar(value=0)
         self.progress = tb.Progressbar(
@@ -311,7 +311,7 @@ class Runner(tb.Frame):
             mode='determinate',
             variable=self.progress_var,
         )
-        self.progress.pack(side=LEFT, fill=X, expand=True, padx=(8, 0))
+        self.progress.pack(side=LEFT, fill=X, expand=True, padx=(2, 0))
         self.percent_var = tb.StringVar(value="")
         self.percent_label = tb.Label(
             self.running_frame,
