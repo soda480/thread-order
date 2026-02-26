@@ -20,6 +20,7 @@ from thread_order import (
 
 CARD_WIDTH = 130
 CARD_HEIGHT = 64
+ICON_WIDTH = 46
 
 class Runner(tb.Frame):
     def __init__(self, master):
@@ -70,7 +71,8 @@ class Runner(tb.Frame):
         self.log_all_var = tk.BooleanVar(value=False)
         self.options_menu.add_checkbutton(label='Log All', variable=self.log_all_var)
         self.skip_dependents_var = tk.BooleanVar(value=False)
-        self.options_menu.add_checkbutton(label='Skip Dependents', variable=self.skip_dependents_var)
+        self.options_menu.add_checkbutton(
+            label='Skip Dependents', variable=self.skip_dependents_var)
         self.menubar.add_cascade(label='Options', menu=self.options_menu)
 
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
@@ -146,7 +148,6 @@ class Runner(tb.Frame):
 
         state_table_frame = tb.Frame(frame_state_bot)
         state_table_frame.pack(fill=BOTH, expand=True)
-
         self.table_state = Tableview(
             master=state_table_frame,
             coldata=['Key', 'Value', 'Source'],
@@ -159,45 +160,35 @@ class Runner(tb.Frame):
             stripecolor=(self.colors.light, None),
         )
         self.table_state.load_table_data()
-
-        tv = self.table_state.view
-        self.state_vscroll = tb.Scrollbar(state_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self._autohide_scrollbar(self.state_vscroll))
-
-        # pack scrollbar FIRST
+        table_state_view = self.table_state.view
+        self.state_vscroll = tb.Scrollbar(
+            state_table_frame, orient='vertical', command=table_state_view.yview)
+        table_state_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.state_vscroll),
+            selectmode='none')
+        table_state_cols = self.table_state.get_columns()
+        table_state_key_col = table_state_cols[0].cid
+        table_state_view.heading(table_state_key_col, anchor='w')
+        table_state_view.column(table_state_key_col, stretch=False)
+        table_state_value_col = table_state_cols[1].cid
+        table_state_view.heading(table_state_value_col, anchor='w')
+        table_state_view.column(table_state_value_col, stretch=False)
+        table_state_source_col = table_state_cols[2].cid
+        table_state_view.heading(table_state_source_col, anchor='w')
+        table_state_view.column(table_state_source_col, stretch=True)
         self.state_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
         self.table_state.pack(side=LEFT, fill=BOTH, expand=True)
-
-        cols = self.table_state.get_columns()
-        key_col = cols[0].cid
-        value_col = cols[1].cid
-        source_col = cols[2].cid
-
-        tv.column(key_col,   stretch=False, width=160, minwidth=120)
-        tv.column(value_col, stretch=False, width=220, minwidth=160)
-        tv.column(source_col, stretch=True, minwidth=140)
-
-        tv.heading(source_col, anchor='w')
-        tv.heading(key_col, anchor='w')
-        tv.heading(value_col, anchor='w')
-
-        tv.configure(selectmode='none')
-
-        # do autofit after widget has real width
-        self.after_idle(self.table_state.autofit_columns)
+        self.table_state.autofit_columns()
 
         # TASKS TAB
         tasks_frame = tb.Frame(tab2)
         tasks_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         total_tasks_frame = tb.Frame(tasks_frame)
         total_tasks_frame.pack(fill=X, expand=False)
         self.tasks_total_var = tb.IntVar(value=0)
         self._make_counter(total_tasks_frame, 'Total', self.tasks_total_var, bootstyle='dark')
-
         tasks_table_frame = tb.Frame(tasks_frame)
-        tasks_table_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
+        tasks_table_frame.pack(fill=BOTH, expand=True)
         self.table_tasks = Tableview(
             master=tasks_table_frame,
             coldata=['Tasks', 'Dependencies'],
@@ -211,60 +202,37 @@ class Runner(tb.Frame):
             disable_right_click=True,
         )
         self.table_tasks.load_table_data()
-
-        tv = self.table_tasks.view
-        self.tasks_vscroll = tb.Scrollbar(tasks_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self._autohide_scrollbar(self.tasks_vscroll))
-
-        # pack scrollbar FIRST so it always keeps width
-        self.tasks_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
-
-        # then pack the table to take remaining space
-        self.table_tasks.pack(side=LEFT, fill=BOTH, expand=True)
-
         table_tasks_view = self.table_tasks.view
+        self.tasks_vscroll = tb.Scrollbar(
+            tasks_table_frame, orient='vertical', command=table_tasks_view.yview)
+        table_tasks_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.tasks_vscroll),
+            show='tree headings')
+        table_tasks_view.heading('#0', text='#')
+        table_tasks_view.column('#0', stretch=False, anchor='w', width=40, minwidth=40)
         table_tasks_cols = self.table_tasks.get_columns()
         table_tasks_task_col = table_tasks_cols[0].cid
         table_tasks_view.heading(table_tasks_task_col, anchor='w')
-        table_tasks_view.column(
-            table_tasks_task_col, stretch=True, anchor='w', width=400, minwidth=120)
-        table_tasks_view.configure(show='tree headings')
-        table_tasks_view.heading('#0', text='#')
-        table_tasks_view.column(
-            '#0',
-            width=40,
-            minwidth=40,
-            stretch=False,
-            anchor='w'
-        )
-
-        deps_col = table_tasks_cols[1].cid
-
-        # Keep Tasks readable, let Dependencies take remaining space
-        table_tasks_view.column(table_tasks_task_col, stretch=False, width=220, minwidth=160, anchor='w')
-        table_tasks_view.column(deps_col,          stretch=True,  width=420, minwidth=220, anchor='w')
-
-        table_tasks_view.heading(deps_col, anchor='w')
-        self.after_idle(self.table_tasks.autofit_columns)
+        table_tasks_deps_col = table_tasks_cols[1].cid
+        table_tasks_view.heading(table_tasks_deps_col, anchor='w')
+        table_tasks_view.column(table_tasks_deps_col, stretch=True, anchor='w')
+        self.tasks_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_tasks.pack(side=LEFT, fill=BOTH, expand=True)
+        self.table_tasks.autofit_columns()
 
         # THREADS TAB
         threads_frame = tb.Frame(tab3)
         threads_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         thread_viewer_frame = tb.Frame(threads_frame)
         thread_viewer_frame.pack(fill=X, expand=False)
-
         self.queued_var = tb.IntVar(value=0)
         self.active_var = tb.IntVar(value=0)
         self.closed_var = tb.IntVar(value=0)
-
         self._make_counter(thread_viewer_frame, 'Queued', self.queued_var, bootstyle='dark')
         self._make_counter(thread_viewer_frame, 'Active', self.active_var, bootstyle='primary')
         self._make_counter(thread_viewer_frame, 'Closed', self.closed_var, bootstyle='secondary')
-
         threads_table_frame = tb.Frame(threads_frame)
-        threads_table_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
+        threads_table_frame.pack(fill=BOTH, expand=True)
         self.table_threads = Tableview(
             master=threads_table_frame,
             coldata=['Thread', 'Task'],
@@ -278,54 +246,43 @@ class Runner(tb.Frame):
             disable_right_click=True,
         )
         self.table_threads.load_table_data()
-
-        tv = self.table_threads.view
-        self.threads_vscroll = tb.Scrollbar(threads_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self._autohide_scrollbar(self.threads_vscroll))
-
-        # pack scrollbar FIRST so it always keeps width
-        self.threads_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
-
-        # then pack the table to take remaining space
-        self.table_threads.pack(side=LEFT, fill=BOTH, expand=True)
-
         table_threads_view = self.table_threads.view
+        self.threads_vscroll = tb.Scrollbar(
+            threads_table_frame, orient='vertical', command=table_threads_view.yview)
+        table_threads_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.threads_vscroll),
+            show='tree headings',
+            selectmode='none')
         table_threads_cols = self.table_threads.get_columns()
-        table_threads_task_col = table_threads_cols[1].cid
-        table_threads_view.heading(table_threads_task_col, anchor="w")
-        table_threads_view.column(
-            table_threads_task_col, stretch=True, anchor="w", width=400, minwidth=120)
-        # show icon column (#0) for thread table
-        table_threads_view.configure(show='tree headings', selectmode='none')
         table_threads_view.heading('#0', text='')
-        ICON_W = 46
-        table_threads_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
+        table_threads_view.column(
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
+        table_threads_task_col = table_threads_cols[1].cid
+        table_threads_view.heading(table_threads_task_col, anchor='w')
+        table_threads_view.column(
+            table_threads_task_col, stretch=True, anchor='w')
         table_threads_view.selection_remove(table_threads_view.selection())
         table_threads_view.focus('')
-
-        # set initial grey icons
+        self.threads_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_threads.pack(side=LEFT, fill=BOTH, expand=True)
+        self.table_threads.autofit_columns()
         self._init_thread_icons()
 
         # RUN TAB
         run_frame = tb.Frame(tab4)
         run_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         summary_frame = tb.Frame(run_frame)
         summary_frame.pack(fill=X, expand=False)
-
         self.total_var = tb.IntVar(value=0)
         self.passed_var = tb.IntVar(value=0)
         self.failed_var = tb.IntVar(value=0)
         self.skipped_var = tb.IntVar(value=0)
-
         self._make_counter(summary_frame, 'Total', self.total_var, bootstyle='dark')
         self._make_counter(summary_frame, 'Passed', self.passed_var, bootstyle='success')
         self._make_counter(summary_frame, 'Failed', self.failed_var, bootstyle='danger')
         self._make_counter(summary_frame, 'Skipped', self.skipped_var, bootstyle='warning')
-
         run_table_frame = tb.Frame(run_frame)
-        run_table_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
+        run_table_frame.pack(fill=BOTH, expand=True)
         self.table_run = Tableview(
             master=run_table_frame,
             coldata=['#', 'Task'],
@@ -339,34 +296,30 @@ class Runner(tb.Frame):
             disable_right_click=True,
         )
         self.table_run.load_table_data()
-        tv = self.table_run.view
-        self.run_vscroll = tb.Scrollbar(run_table_frame, orient='vertical', command=tv.yview)
-        tv.configure(yscrollcommand=self._autohide_scrollbar(self.run_vscroll))
-
-        # pack scrollbar FIRST
+        table_run_view = self.table_run.view
+        self.run_vscroll = tb.Scrollbar(
+            run_table_frame, orient='vertical', command=table_run_view.yview)
+        table_run_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.run_vscroll),
+            show='tree headings')
+        table_run_cols = self.table_run.get_columns()
+        table_run_view.heading('#0', text='')
+        table_run_view.column(
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
+        table_run_num_col = table_run_cols[0].cid
+        table_run_view.heading(table_run_num_col, anchor='w')
+        table_run_view.column(table_run_num_col, stretch=False, anchor='w', width=40, minwidth=40)
+        table_run_task_col = table_run_cols[1].cid
+        table_run_view.heading(table_run_task_col, anchor='w')
+        table_run_view.column(table_run_task_col, stretch=True, anchor='w')
         self.run_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
         self.table_run.pack(side=LEFT, fill=BOTH, expand=True)
-
-        table_run_view = self.table_run.view
-        cols = self.table_run.get_columns()
-        num_col = cols[0].cid
-        task_col = cols[1].cid
-        table_run_view.configure(show='tree headings')
-        ICON_W = 46
-        table_run_view.heading('#0', text='')
-        table_run_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
-        table_run_view.heading(num_col, anchor='w')
-        table_run_view.column(num_col, stretch=False, anchor='w', width=40, minwidth=40)
-        table_run_view.heading(task_col, anchor='w')
-        table_run_view.column(task_col, stretch=True, anchor='w', width=400, minwidth=120)
-
-        self.after_idle(self.hide_all_hscrollbars)
-        self.after(200, self.hide_all_hscrollbars)
 
         self.notebook.add(tab1, text='State')
         self.notebook.add(tab2, text='Tasks')
         self.notebook.add(tab3, text='Threads')
         self.notebook.add(tab4, text='Run')
+        self.after_idle(self.hide_all_hscrollbars)
 
         # STATUS BAR
         self.footer = tb.Frame(self.master, padding=(8, 4))
@@ -718,7 +671,7 @@ class Runner(tb.Frame):
                 value_str = str(value)
             self._upsert_state_row(key, value_str, Path(path).name)
 
-        self.after_idle(self._apply_state_column_layout)
+        self.table_state.autofit_columns()
 
     def get_state_from_table(self):
 
@@ -846,19 +799,6 @@ class Runner(tb.Frame):
         self.duration_var.set(f"{hours:02d}:{mins:02d}:{secs:02d}")
         # was 500ms; 1s is enough since you display seconds
         self._elapsed_job = self.after(1000, self._tick_elapsed)
-
-    def _apply_state_column_layout(self):
-        tv = self.table_state.view
-        cols = self.table_state.get_columns()
-        key_col, value_col, source_col = cols[0].cid, cols[1].cid, cols[2].cid
-
-        tv.column(key_col,   stretch=False, width=160, minwidth=120, anchor='w')
-        tv.column(value_col, stretch=False, width=220, minwidth=160, anchor='w')
-        tv.column(source_col, stretch=True,  minwidth=140, anchor='w')
-
-        tv.heading(key_col, anchor='w')
-        tv.heading(value_col, anchor='w')
-        tv.heading(source_col, anchor='w')
 
     def _autohide_scrollbar(self, scrollbar):
         def _wrapped(first, last):
