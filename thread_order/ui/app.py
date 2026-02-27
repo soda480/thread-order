@@ -18,11 +18,12 @@ from thread_order import (
     register_functions
 )
 
-CARD_WIDTH = 130
+CARD_WIDTH = 80
 CARD_HEIGHT = 64
 ICON_WIDTH = 46
 
 class Runner(tb.Frame):
+
     def __init__(self, master):
         super().__init__(master)
         self.master = master
@@ -32,7 +33,11 @@ class Runner(tb.Frame):
             'FAILED': self._make_swatch('#e74c3c'),  # red
             'SKIPPED': self._make_swatch('#f1c40f'),  # yellow
         }
-
+        self._source_icons = {
+            'user': self._make_swatch('#000000'),        # black
+            'state': self._make_swatch('#3498DB'),       # blue
+            'module': self._make_swatch('#E67E22'),      # orange
+        }
         # thread icons
         self._thread_icon_size = 12
         self._thread_icon_grey = self.colors.light
@@ -122,26 +127,38 @@ class Runner(tb.Frame):
         tab3 = tb.Frame(self.notebook)
         tab4 = tb.Frame(self.notebook)
 
-        frame_state_top = tb.Frame(tab1)
-        frame_state_bot = tb.Frame(tab1)
+        state_frame = tb.Frame(tab1)
+        state_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
+
+        frame_state_top = tb.Frame(state_frame)
+        frame_state_bot = tb.Frame(state_frame)
         frame_state_top.pack(fill=X, expand=False)
         frame_state_bot.pack(fill=BOTH, expand=True)
 
+        legend_row = tb.Frame(frame_state_top)
+        legend_row.pack(side=LEFT)
+        self._make_legend_card(legend_row, 'User\nEntry', bootstyle='dark')
+        self._make_legend_card(legend_row, 'State\nFile', bootstyle='primary')
+        self._make_legend_card(legend_row, 'Module\nFile', bootstyle='warning')
+
+        entry_frame = tb.Frame(frame_state_top)
+        entry_frame.pack(side=LEFT, fill=X, expand=True)
+
         self.key_value = tb.StringVar(value='')
-        entry_key_value = tb.Entry(
-            frame_state_top,
+        self.entry_key_value = tb.Entry(
+            entry_frame,
             width=50,
             justify='left',
             textvariable=self.key_value)
-        entry_key_value.pack(side=LEFT, padx=4, pady=4, fill=X, expand=True)
+        self.entry_key_value.pack(side=LEFT, padx=4, pady=4, fill=X, expand=True)
         self.button_key_value = tb.Button(
-            frame_state_top,
+            entry_frame,
             text='Add Key Value',
             command=self.add_key_value,
             state='enabled',
             width=12,
             bootstyle='primary')
-        entry_key_value.bind(
+        self.entry_key_value.bind(
             '<Return>',
             lambda e: self.button_key_value.invoke())
         self.button_key_value.pack(side=LEFT, padx=4, pady=4)
@@ -150,7 +167,7 @@ class Runner(tb.Frame):
         state_table_frame.pack(fill=BOTH, expand=True)
         self.table_state = Tableview(
             master=state_table_frame,
-            coldata=['Key', 'Value', 'Source'],
+            coldata=['Key', 'Value'],
             rowdata=[],
             paginated=False,
             autofit=False,
@@ -165,17 +182,17 @@ class Runner(tb.Frame):
             state_table_frame, orient='vertical', command=table_state_view.yview)
         table_state_view.configure(
             yscrollcommand=self._autohide_scrollbar(self.state_vscroll),
-            selectmode='none')
+            show='tree headings')
         table_state_cols = self.table_state.get_columns()
+        table_state_view.heading('#0', text='')
+        table_state_view.column(
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
         table_state_key_col = table_state_cols[0].cid
         table_state_view.heading(table_state_key_col, anchor='w')
         table_state_view.column(table_state_key_col, stretch=False)
         table_state_value_col = table_state_cols[1].cid
         table_state_view.heading(table_state_value_col, anchor='w')
-        table_state_view.column(table_state_value_col, stretch=False)
-        table_state_source_col = table_state_cols[2].cid
-        table_state_view.heading(table_state_source_col, anchor='w')
-        table_state_view.column(table_state_source_col, stretch=True)
+        table_state_view.column(table_state_value_col, stretch=True)
         self.state_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
         self.table_state.pack(side=LEFT, fill=BOTH, expand=True)
         self.table_state.autofit_columns()
@@ -358,7 +375,7 @@ class Runner(tb.Frame):
             key = key_value_split[0].strip()
             value = key_value_split[1].strip()
             if value:
-                self.table_state.insert_row(index=0, values=(key, value, 'user'))
+                self._upsert_state_row(key, value, 'user')
                 self.table_state.autofit_columns()
                 self.key_value.set('')
 
@@ -368,7 +385,6 @@ class Runner(tb.Frame):
         self.table_threads.delete_rows()
         self.table_threads.insert_rows(0, rowdata=[(f'thread_{i}', '') for i in range(workers)])
         self.table_threads.autofit_columns()
-
         self._init_thread_icons()
 
     def open_tasks(self):
@@ -430,7 +446,6 @@ class Runner(tb.Frame):
         )
         if not path:
             return
-
         self.notebook.select(0)
         self._load_state_from_json(path)
         self.duration_var.set(f'Loaded state from {Path(path).name}')
@@ -490,10 +505,10 @@ class Runner(tb.Frame):
         iid = self.table_run.view.get_children('')[0]
         self.table_run.view.item(iid, image=icon)
         # highlight row that was just inserted
-        tv = self.table_run.view
-        tv.selection_set(iid)
-        tv.focus(iid)
-        tv.see(iid)
+        tabke_run_view = self.table_run.view
+        tabke_run_view.selection_set(iid)
+        tabke_run_view.focus(iid)
+        tabke_run_view.see(iid)
 
         if key == 'PASSED':
             self.passed_var.set(self.passed_var.get() + 1)
@@ -507,12 +522,12 @@ class Runner(tb.Frame):
             self.active_var.set(self.active_var.get() - 1)
             self.closed_var.set(self.closed_var.get() + 1)
 
-            tv = self.table_threads.view
-            iid = tv.get_children('')[thread_number]
-            tv.item(iid, values=(thread_name, ''))
+            table_threads_view = self.table_threads.view
+            iid = table_threads_view.get_children('')[thread_number]
+            table_threads_view.item(iid, values=(thread_name, ''))
 
             # back to grey when idle
-            tv.item(iid, image=self._get_thread_icon(self._thread_icon_grey))
+            table_threads_view.item(iid, image=self._get_thread_icon(self._thread_icon_grey))
             self._thread_icon_color[thread_name] = self._thread_icon_grey
         else:
             self.closed_var.set(self.closed_var.get() + 1)
@@ -533,6 +548,7 @@ class Runner(tb.Frame):
         self.spinbox_workers.configure(state='disabled' if running else 'enabled')
         self.run_button.configure(state='disabled' if running else 'enabled')
         self.button_key_value.configure(state='disabled' if running else 'enabled')
+        self.entry_key_value.configure(state='disabled' if running else 'normal')
         self._set_menu_state('disabled' if running else 'normal')
         if running:
             self._show_running_footer()
@@ -636,6 +652,30 @@ class Runner(tb.Frame):
             anchor='w'
         ).pack(anchor='w')
 
+    def _make_legend_card(self, parent, title, bootstyle='secondary'):
+        card = tb.Frame(
+            parent,
+            width=CARD_WIDTH,
+            height=CARD_HEIGHT,
+            bootstyle=bootstyle
+        )
+        card.pack_propagate(False)
+        card.pack(side=LEFT, padx=4, pady=4)
+
+        tb.Label(
+            card,
+            text=title,
+            font=('Segoe UI', 10, 'bold'),
+            bootstyle='inverse-' + bootstyle,
+            anchor='w'
+        ).pack(anchor='w')
+
+        tb.Label(
+            card,
+            bootstyle='inverse-' + bootstyle,
+            anchor='w'
+        ).pack(anchor='w')
+
     def _renumber_table(self, table: Tableview, start=1):
         for i, iid in enumerate(table.view.get_children(""), start=start):
             table.view.item(iid, text=str(i))
@@ -669,7 +709,7 @@ class Runner(tb.Frame):
                 value_str = json.dumps(value)
             else:
                 value_str = str(value)
-            self._upsert_state_row(key, value_str, Path(path).name)
+            self._upsert_state_row(key, value_str, 'state')
 
         self.table_state.autofit_columns()
 
@@ -689,13 +729,18 @@ class Runner(tb.Frame):
         return state
 
     def _upsert_state_row(self, key, value_str, source):
-        tv = self.table_state.view
-        for iid in tv.get_children(''):
-            k = tv.item(iid, 'values')[0]
+        table_state_view = self.table_state.view
+        icon = self._source_icons[source]
+        for iid in table_state_view.get_children(''):
+            k = table_state_view.item(iid, 'values')[0]
             if k == key:
-                tv.item(iid, values=(key, value_str, source))
+                table_state_view.item(iid, values=(key, value_str), image=icon)
+                table_state_view.move(iid, '', 0)  # move to top
+                table_state_view.see(iid)
                 return
-        self.table_state.insert_row(index='end', values=(key, value_str, source))
+        row = self.table_state.insert_row(index=0, values=(key, value_str))
+        table_state_view.item(row.iid, image=icon)
+        table_state_view.see(row.iid)
 
     def show_about(self):
         version = importlib.metadata.version("thread-order")
@@ -816,6 +861,11 @@ class Runner(tb.Frame):
             scrollbar.set(first, last)
 
         return _wrapped
+
+def _legend_item(parent, icon, text):
+    w = tb.Label(parent, image=icon, text=f"  {text}", compound="left")
+    w.pack(side=LEFT, padx=(8, 0))
+    return w
 
 def _maybe_call_setup_state(module, initial_state):
     """ invoke module-level setup_state(initial_state) if defined
