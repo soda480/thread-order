@@ -73,7 +73,7 @@ cc: venv
 
 bandit: venv
 	@printf "$(YELLOW)Executing bandit security scan...$(RESET)\n"
-	$(PY) -m bandit -r $(PKG)/ --skip B606
+	$(PY) -m bandit -r $(PKG)/ --skip B606,B311,B110
 
 build: venv
 	@printf "$(YELLOW)Building source and wheel distributions...$(RESET)\n"

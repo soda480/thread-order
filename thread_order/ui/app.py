@@ -1,4 +1,6 @@
 import queue
+import random
+import time
 import threading
 import json
 from pathlib import Path
@@ -16,10 +18,12 @@ from thread_order import (
     register_functions
 )
 
-CARD_WIDTH = 130
+CARD_WIDTH = 80
 CARD_HEIGHT = 64
+ICON_WIDTH = 46
 
 class Runner(tb.Frame):
+
     def __init__(self, master):
         super().__init__(master)
         self.master = master
@@ -29,35 +33,58 @@ class Runner(tb.Frame):
             'FAILED': self._make_swatch('#e74c3c'),  # red
             'SKIPPED': self._make_swatch('#f1c40f'),  # yellow
         }
+        self._source_icons = {
+            'user': self._make_swatch('#000000'),        # black
+            'state': self._make_swatch('#3498DB'),       # blue
+            'module': self._make_swatch('#E67E22'),      # orange
+        }
+        # thread icons
+        self._thread_icon_size = 12
+        self._thread_icon_grey = self.colors.light
+        self._thread_icon_palette = [
+            "#E74C3C", "#9B59B6", "#3498DB", "#1ABC9C", "#2ECC71",
+            "#F1C40F", "#E67E22", "#16A085", "#2980B9", "#8E44AD",
+            "#C0392B", "#27AE60", "#F39C12",
+            "#D35400", "#2C3E50", "#34495E", "#7F8C8D",
+            "#00B894", "#0984E3", "#6C5CE7", "#E84393",
+            "#00CEC9", "#A29BFE",
+        ]
+        self._thread_icon_cache = {}     # color -> PhotoImage (keep refs!)
+        self._thread_icon_color = {}     # thread_name -> current color
+
         self.setupui()
         self._uiqueue = queue.Queue()
         self._poll_uiqueue()
         self._running = False
+        self._run_t0 = None
+        self._elapsed_job = None
 
     def setupui(self):
         self.pack()
 
         # menubar
-        menubar = tk.Menu(self.master)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label='Open Tasks', command=self.open_tasks)
-        file_menu.add_command(label='Open State', command=self.open_state)
-        file_menu.add_separator()
-        file_menu.add_command(label='Exit', command=self.master.quit)
-        menubar.add_cascade(label='File', menu=file_menu)
+        self.menubar = tk.Menu(self.master)
 
-        options_menu = tk.Menu(menubar, tearoff=0)
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.file_menu.add_command(label='Open Tasks', command=self.open_tasks)
+        self.file_menu.add_command(label='Open State', command=self.open_state)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label='Exit', command=self.master.quit)
+        self.menubar.add_cascade(label='File', menu=self.file_menu)
+
+        self.options_menu = tk.Menu(self.menubar, tearoff=0)
         self.log_all_var = tk.BooleanVar(value=False)
-        options_menu.add_checkbutton(label='Log All', variable=self.log_all_var)
+        self.options_menu.add_checkbutton(label='Log All', variable=self.log_all_var)
         self.skip_dependents_var = tk.BooleanVar(value=False)
-        options_menu.add_checkbutton(label='Skip Dependents', variable=self.skip_dependents_var)
-        menubar.add_cascade(label='Options', menu=options_menu)
+        self.options_menu.add_checkbutton(
+            label='Skip Dependents', variable=self.skip_dependents_var)
+        self.menubar.add_cascade(label='Options', menu=self.options_menu)
 
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label='About', command=self.show_about)
-        menubar.add_cascade(label='Help', menu=help_menu)
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.help_menu.add_command(label='About', command=self.show_about)
+        self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
-        self.master.config(menu=menubar)
+        self.master.config(menu=self.menubar)
 
         top_frame = tb.Frame(self.master, padding=4)
         top_frame.pack(fill=BOTH, expand=False)
@@ -100,170 +127,216 @@ class Runner(tb.Frame):
         tab3 = tb.Frame(self.notebook)
         tab4 = tb.Frame(self.notebook)
 
-        frame_state_top = tb.Frame(tab1)
-        frame_state_bot = tb.Frame(tab1)
+        state_frame = tb.Frame(tab1)
+        state_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
+
+        frame_state_top = tb.Frame(state_frame)
+        frame_state_bot = tb.Frame(state_frame)
         frame_state_top.pack(fill=X, expand=False)
         frame_state_bot.pack(fill=BOTH, expand=True)
 
+        legend_row = tb.Frame(frame_state_top)
+        legend_row.pack(side=LEFT)
+        self._make_legend_card(legend_row, 'User\nEntry', bootstyle='dark')
+        self._make_legend_card(legend_row, 'State\nFile', bootstyle='primary')
+        self._make_legend_card(legend_row, 'Module\nFile', bootstyle='warning')
+
+        entry_frame = tb.Frame(frame_state_top)
+        entry_frame.pack(side=LEFT, fill=X, expand=True)
+
         self.key_value = tb.StringVar(value='')
-        entry_key_value = tb.Entry(
-            frame_state_top,
+        self.entry_key_value = tb.Entry(
+            entry_frame,
             width=50,
             justify='left',
             textvariable=self.key_value)
-        entry_key_value.pack(side=LEFT, padx=4, pady=4, fill=X, expand=True)
-        button_key_value = tb.Button(
-            frame_state_top,
+        self.entry_key_value.pack(side=LEFT, padx=4, pady=4, fill=X, expand=True)
+        self.button_key_value = tb.Button(
+            entry_frame,
             text='Add Key Value',
             command=self.add_key_value,
             state='enabled',
             width=12,
             bootstyle='primary')
-        entry_key_value.bind(
+        self.entry_key_value.bind(
             '<Return>',
-            lambda e: button_key_value.invoke())
-        button_key_value.pack(side=LEFT, padx=4, pady=4)
+            lambda e: self.button_key_value.invoke())
+        self.button_key_value.pack(side=LEFT, padx=4, pady=4)
+
+        state_table_frame = tb.Frame(frame_state_bot)
+        state_table_frame.pack(fill=BOTH, expand=True)
         self.table_state = Tableview(
-            master=frame_state_bot,
-            coldata=['Key', 'Value', 'Source', ''],
+            master=state_table_frame,
+            coldata=['Key', 'Value'],
             rowdata=[],
             paginated=False,
             autofit=False,
             searchable=False,
             bootstyle='primary',
-            yscrollbar=True,
+            yscrollbar=False,
             stripecolor=(self.colors.light, None),
         )
-        self.table_state.pack(fill=BOTH, expand=True)
-        self.table_state.view.column(self.table_state.get_columns()[-1].cid, stretch=True)
+        self.table_state.load_table_data()
+        table_state_view = self.table_state.view
+        self.state_vscroll = tb.Scrollbar(
+            state_table_frame, orient='vertical', command=table_state_view.yview)
+        table_state_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.state_vscroll),
+            show='tree headings')
+        table_state_cols = self.table_state.get_columns()
+        table_state_view.heading('#0', text='')
+        table_state_view.column(
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
+        table_state_key_col = table_state_cols[0].cid
+        table_state_view.heading(table_state_key_col, anchor='w')
+        table_state_view.column(table_state_key_col, stretch=False)
+        table_state_value_col = table_state_cols[1].cid
+        table_state_view.heading(table_state_value_col, anchor='w')
+        table_state_view.column(table_state_value_col, stretch=True)
+        self.state_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_state.pack(side=LEFT, fill=BOTH, expand=True)
         self.table_state.autofit_columns()
 
         # TASKS TAB
         tasks_frame = tb.Frame(tab2)
         tasks_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         total_tasks_frame = tb.Frame(tasks_frame)
         total_tasks_frame.pack(fill=X, expand=False)
         self.tasks_total_var = tb.IntVar(value=0)
         self._make_counter(total_tasks_frame, 'Total', self.tasks_total_var, bootstyle='dark')
-
+        tasks_table_frame = tb.Frame(tasks_frame)
+        tasks_table_frame.pack(fill=BOTH, expand=True)
         self.table_tasks = Tableview(
-            master=tasks_frame,
+            master=tasks_table_frame,
             coldata=['Tasks', 'Dependencies'],
             rowdata=[],
             paginated=False,
             autofit=False,
             searchable=False,
             bootstyle='primary',
-            yscrollbar=True,
+            yscrollbar=False,
             stripecolor=(self.colors.light, None),
             disable_right_click=True,
         )
         self.table_tasks.load_table_data()
-        self.table_tasks.pack(fill=BOTH, expand=True, padx=4, pady=4)
         table_tasks_view = self.table_tasks.view
+        self.tasks_vscroll = tb.Scrollbar(
+            tasks_table_frame, orient='vertical', command=table_tasks_view.yview)
+        table_tasks_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.tasks_vscroll),
+            show='tree headings')
+        table_tasks_view.heading('#0', text='#')
+        table_tasks_view.column('#0', stretch=False, anchor='w', width=40, minwidth=40)
         table_tasks_cols = self.table_tasks.get_columns()
         table_tasks_task_col = table_tasks_cols[0].cid
         table_tasks_view.heading(table_tasks_task_col, anchor='w')
-        table_tasks_view.column(
-            table_tasks_task_col, stretch=True, anchor='w', width=400, minwidth=120)
-        table_tasks_view.configure(show='tree headings')
-        table_tasks_view.heading('#0', text='#')
-        table_tasks_view.column(
-            '#0',
-            width=40,
-            minwidth=40,
-            stretch=False,
-            anchor='w'
-        )
+        table_tasks_deps_col = table_tasks_cols[1].cid
+        table_tasks_view.heading(table_tasks_deps_col, anchor='w')
+        table_tasks_view.column(table_tasks_deps_col, stretch=True, anchor='w')
+        self.tasks_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_tasks.pack(side=LEFT, fill=BOTH, expand=True)
+        self.table_tasks.autofit_columns()
 
         # THREADS TAB
         threads_frame = tb.Frame(tab3)
         threads_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         thread_viewer_frame = tb.Frame(threads_frame)
         thread_viewer_frame.pack(fill=X, expand=False)
-
         self.queued_var = tb.IntVar(value=0)
         self.active_var = tb.IntVar(value=0)
         self.closed_var = tb.IntVar(value=0)
-
         self._make_counter(thread_viewer_frame, 'Queued', self.queued_var, bootstyle='dark')
         self._make_counter(thread_viewer_frame, 'Active', self.active_var, bootstyle='primary')
         self._make_counter(thread_viewer_frame, 'Closed', self.closed_var, bootstyle='secondary')
-
+        threads_table_frame = tb.Frame(threads_frame)
+        threads_table_frame.pack(fill=BOTH, expand=True)
         self.table_threads = Tableview(
-            master=threads_frame,
+            master=threads_table_frame,
             coldata=['Thread', 'Task'],
             rowdata=[(f'thread_{i}', '') for i in range(int(self.workers.get()))],
             paginated=False,
             autofit=False,
             searchable=False,
             bootstyle='primary',
-            yscrollbar=True,
+            yscrollbar=False,
             stripecolor=(self.colors.light, None),
             disable_right_click=True,
         )
         self.table_threads.load_table_data()
-        self.table_threads.pack(fill=BOTH, expand=True, padx=4, pady=4)
         table_threads_view = self.table_threads.view
+        self.threads_vscroll = tb.Scrollbar(
+            threads_table_frame, orient='vertical', command=table_threads_view.yview)
+        table_threads_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.threads_vscroll),
+            show='tree headings',
+            selectmode='none')
         table_threads_cols = self.table_threads.get_columns()
-        table_threads_task_col = table_threads_cols[1].cid
-        table_threads_view.heading(table_threads_task_col, anchor="w")
+        table_threads_view.heading('#0', text='')
         table_threads_view.column(
-            table_threads_task_col, stretch=True, anchor="w", width=400, minwidth=120)
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
+        table_threads_task_col = table_threads_cols[1].cid
+        table_threads_view.heading(table_threads_task_col, anchor='w')
+        table_threads_view.column(
+            table_threads_task_col, stretch=True, anchor='w')
+        table_threads_view.selection_remove(table_threads_view.selection())
+        table_threads_view.focus('')
+        self.threads_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_threads.pack(side=LEFT, fill=BOTH, expand=True)
+        self.table_threads.autofit_columns()
+        self._init_thread_icons()
 
         # RUN TAB
         run_frame = tb.Frame(tab4)
         run_frame.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         summary_frame = tb.Frame(run_frame)
         summary_frame.pack(fill=X, expand=False)
-
         self.total_var = tb.IntVar(value=0)
         self.passed_var = tb.IntVar(value=0)
         self.failed_var = tb.IntVar(value=0)
         self.skipped_var = tb.IntVar(value=0)
-
         self._make_counter(summary_frame, 'Total', self.total_var, bootstyle='dark')
         self._make_counter(summary_frame, 'Passed', self.passed_var, bootstyle='success')
         self._make_counter(summary_frame, 'Failed', self.failed_var, bootstyle='danger')
         self._make_counter(summary_frame, 'Skipped', self.skipped_var, bootstyle='warning')
-
+        run_table_frame = tb.Frame(run_frame)
+        run_table_frame.pack(fill=BOTH, expand=True)
         self.table_run = Tableview(
-            master=run_frame,
+            master=run_table_frame,
             coldata=['#', 'Task'],
             rowdata=[],
             paginated=False,
             autofit=False,
             searchable=False,
             bootstyle='primary',
-            yscrollbar=True,
+            yscrollbar=False,
             stripecolor=(self.colors.light, None),
             disable_right_click=True,
         )
         self.table_run.load_table_data()
-        self.table_run.pack(fill=BOTH, expand=True, padx=4, pady=4)
-
         table_run_view = self.table_run.view
-        cols = self.table_run.get_columns()
-        num_col = cols[0].cid
-        task_col = cols[1].cid
-        table_run_view.configure(show='tree headings')
-        ICON_W = 46
+        self.run_vscroll = tb.Scrollbar(
+            run_table_frame, orient='vertical', command=table_run_view.yview)
+        table_run_view.configure(
+            yscrollcommand=self._autohide_scrollbar(self.run_vscroll),
+            show='tree headings')
+        table_run_cols = self.table_run.get_columns()
         table_run_view.heading('#0', text='')
-        table_run_view.column('#0', width=ICON_W, minwidth=ICON_W, stretch=False, anchor='center')
-        table_run_view.heading(num_col, anchor='w')
-        table_run_view.column(num_col, stretch=False, anchor='w', width=40, minwidth=40)
-        table_run_view.heading(task_col, anchor='w')
-        table_run_view.column(task_col, stretch=True, anchor='w', width=400, minwidth=120)
-
-        self.after(0, self.hide_all_hscrollbars)
+        table_run_view.column(
+            '#0', width=ICON_WIDTH, minwidth=ICON_WIDTH, stretch=False, anchor='center')
+        table_run_num_col = table_run_cols[0].cid
+        table_run_view.heading(table_run_num_col, anchor='w')
+        table_run_view.column(table_run_num_col, stretch=False, anchor='w', width=40, minwidth=40)
+        table_run_task_col = table_run_cols[1].cid
+        table_run_view.heading(table_run_task_col, anchor='w')
+        table_run_view.column(table_run_task_col, stretch=True, anchor='w')
+        self.run_vscroll.pack(side=RIGHT, fill=Y, padx=(4, 0))
+        self.table_run.pack(side=LEFT, fill=BOTH, expand=True)
 
         self.notebook.add(tab1, text='State')
         self.notebook.add(tab2, text='Tasks')
         self.notebook.add(tab3, text='Threads')
         self.notebook.add(tab4, text='Run')
+        self.after_idle(self.hide_all_hscrollbars)
 
         # STATUS BAR
         self.footer = tb.Frame(self.master, padding=(8, 4))
@@ -275,7 +348,7 @@ class Runner(tb.Frame):
             font=('Segoe UI', 8),
             anchor='w'
         )
-        self.duration_label.pack(side=LEFT, fill=X, expand=False)
+        self.duration_label.pack(side=LEFT, fill=None, expand=False, padx=(0, 2))
         self.running_frame = tb.Frame(self.footer)
         self.progress_var = tb.IntVar(value=0)
         self.progress = tb.Progressbar(
@@ -283,7 +356,7 @@ class Runner(tb.Frame):
             mode='determinate',
             variable=self.progress_var,
         )
-        self.progress.pack(side=LEFT, fill=X, expand=True)
+        self.progress.pack(side=LEFT, fill=X, expand=True, padx=(2, 0))
         self.percent_var = tb.StringVar(value="")
         self.percent_label = tb.Label(
             self.running_frame,
@@ -302,7 +375,7 @@ class Runner(tb.Frame):
             key = key_value_split[0].strip()
             value = key_value_split[1].strip()
             if value:
-                self.table_state.insert_row(index=0, values=(key, value, 'user', ''))
+                self._upsert_state_row(key, value, 'user')
                 self.table_state.autofit_columns()
                 self.key_value.set('')
 
@@ -312,6 +385,7 @@ class Runner(tb.Frame):
         self.table_threads.delete_rows()
         self.table_threads.insert_rows(0, rowdata=[(f'thread_{i}', '') for i in range(workers)])
         self.table_threads.autofit_columns()
+        self._init_thread_icons()
 
     def open_tasks(self):
         try:
@@ -372,7 +446,6 @@ class Runner(tb.Frame):
         )
         if not path:
             return
-
         self.notebook.select(0)
         self._load_state_from_json(path)
         self.duration_var.set(f'Loaded state from {Path(path).name}')
@@ -391,20 +464,39 @@ class Runner(tb.Frame):
 
     def _on_scheduler_start_ui(self, meta):
         self._set_running_ui(True)
-        self.duration_var.set('')
+
+        # determinate progress from the start
+        self.progress.configure(mode='determinate')
         self.progress_var.set(0)
         self.percent_var.set('0%')
 
+        # elapsed timer
+        self.duration_var.set('00:00:00')
+        self._start_elapsed_ticker()
+
     def on_task_run_ui(self, task_name, thread_name):
         thread_number = _get_thread_number(thread_name)
-        if thread_number is not None:
-            self.active_var.set(self.active_var.get() + 1)
-            self.queued_var.set(max(0, self.queued_var.get() - 1))
-            children = self.table_threads.view.get_children('')
-            if thread_number >= len(children):
-                return
-            iid = children[thread_number]
-            self.table_threads.view.item(iid, values=(thread_name, task_name))
+        if thread_number is None:
+            return
+
+        self.active_var.set(self.active_var.get() + 1)
+        self.queued_var.set(max(0, self.queued_var.get() - 1))
+
+        children = self.table_threads.view.get_children('')
+        if thread_number >= len(children):
+            return
+
+        tv = self.table_threads.view
+        iid = children[thread_number]
+
+        # update values
+        tv.item(iid, values=(thread_name, task_name))
+
+        # update icon color (must change if reassigned)
+        prev = self._thread_icon_color.get(thread_name, self._thread_icon_grey)
+        new_color = self._pick_new_thread_color(prev)
+        tv.item(iid, image=self._get_thread_icon(new_color))
+        self._thread_icon_color[thread_name] = new_color
 
     def on_task_done_ui(self, task_name, thread_name, status, count, total):
         key = str(status.value).upper()
@@ -413,10 +505,10 @@ class Runner(tb.Frame):
         iid = self.table_run.view.get_children('')[0]
         self.table_run.view.item(iid, image=icon)
         # highlight row that was just inserted
-        tv = self.table_run.view
-        tv.selection_set(iid)
-        tv.focus(iid)
-        tv.see(iid)
+        tabke_run_view = self.table_run.view
+        tabke_run_view.selection_set(iid)
+        tabke_run_view.focus(iid)
+        tabke_run_view.see(iid)
 
         if key == 'PASSED':
             self.passed_var.set(self.passed_var.get() + 1)
@@ -429,8 +521,14 @@ class Runner(tb.Frame):
         if thread_number is not None:
             self.active_var.set(self.active_var.get() - 1)
             self.closed_var.set(self.closed_var.get() + 1)
-            iid = self.table_threads.view.get_children('')[thread_number]
-            self.table_threads.view.item(iid, values=(thread_name, ''))
+
+            table_threads_view = self.table_threads.view
+            iid = table_threads_view.get_children('')[thread_number]
+            table_threads_view.item(iid, values=(thread_name, ''))
+
+            # back to grey when idle
+            table_threads_view.item(iid, image=self._get_thread_icon(self._thread_icon_grey))
+            self._thread_icon_color[thread_name] = self._thread_icon_grey
         else:
             self.closed_var.set(self.closed_var.get() + 1)
             self.queued_var.set(max(0, self.queued_var.get() - 1))
@@ -441,6 +539,7 @@ class Runner(tb.Frame):
         self.percent_var.set(f'{pct}%')
 
     def on_scheduler_done_ui(self, summary):
+        self._stop_elapsed_ticker()
         self._set_running_ui(False)
         duration = summary['duration']
         self.duration_var.set(f'Completed in {duration:.2f}s')
@@ -448,10 +547,19 @@ class Runner(tb.Frame):
     def _set_running_ui(self, running):
         self.spinbox_workers.configure(state='disabled' if running else 'enabled')
         self.run_button.configure(state='disabled' if running else 'enabled')
+        self.button_key_value.configure(state='disabled' if running else 'enabled')
+        self.entry_key_value.configure(state='disabled' if running else 'normal')
+        self._set_menu_state('disabled' if running else 'normal')
         if running:
             self._show_running_footer()
         else:
             self._hide_running_footer()
+
+    def _set_menu_state(self, state):
+        # state is 'normal' or 'disabled'
+        # disable top-level cascades so nothing inside can be clicked
+        self.menubar.entryconfig('File', state=state)
+        self.menubar.entryconfig('Options', state=state)
 
     def run_tasks(self):
         if getattr(self, '_running', False) or not hasattr(self, '_marked_functions'):
@@ -483,9 +591,10 @@ class Runner(tb.Frame):
                 self.scheduler.on_scheduler_done(self.on_scheduler_done)
                 self.scheduler.start()
             except (Exception, SystemExit) as e:
+                self._uiqueue_put(self._set_running_ui, False)
+                self._uiqueue_put(self._stop_elapsed_ticker)
                 # surface the error on the UI thread
                 self._uiqueue_put(messagebox.showerror, 'Run failed', str(e))
-                self._uiqueue_put(self._set_running_ui, False)
             finally:
                 self._running = False
                 print('state' + json.dumps(self.scheduler.sanitized_state, indent=2, default=str))
@@ -543,6 +652,30 @@ class Runner(tb.Frame):
             anchor='w'
         ).pack(anchor='w')
 
+    def _make_legend_card(self, parent, title, bootstyle='secondary'):
+        card = tb.Frame(
+            parent,
+            width=CARD_WIDTH,
+            height=CARD_HEIGHT,
+            bootstyle=bootstyle
+        )
+        card.pack_propagate(False)
+        card.pack(side=LEFT, padx=4, pady=4)
+
+        tb.Label(
+            card,
+            text=title,
+            font=('Segoe UI', 10, 'bold'),
+            bootstyle='inverse-' + bootstyle,
+            anchor='w'
+        ).pack(anchor='w')
+
+        tb.Label(
+            card,
+            bootstyle='inverse-' + bootstyle,
+            anchor='w'
+        ).pack(anchor='w')
+
     def _renumber_table(self, table: Tableview, start=1):
         for i, iid in enumerate(table.view.get_children(""), start=start):
             table.view.item(iid, text=str(i))
@@ -576,7 +709,7 @@ class Runner(tb.Frame):
                 value_str = json.dumps(value)
             else:
                 value_str = str(value)
-            self._upsert_state_row(key, value_str, Path(path).name)
+            self._upsert_state_row(key, value_str, 'state')
 
         self.table_state.autofit_columns()
 
@@ -596,13 +729,18 @@ class Runner(tb.Frame):
         return state
 
     def _upsert_state_row(self, key, value_str, source):
-        tv = self.table_state.view
-        for iid in tv.get_children(''):
-            k = tv.item(iid, 'values')[0]
+        table_state_view = self.table_state.view
+        icon = self._source_icons[source]
+        for iid in table_state_view.get_children(''):
+            k = table_state_view.item(iid, 'values')[0]
             if k == key:
-                tv.item(iid, values=(key, value_str, source, ''))
+                table_state_view.item(iid, values=(key, value_str), image=icon)
+                table_state_view.move(iid, '', 0)  # move to top
+                table_state_view.see(iid)
                 return
-        self.table_state.insert_row(index='end', values=(key, value_str, source, ''))
+        row = self.table_state.insert_row(index=0, values=(key, value_str))
+        table_state_view.item(row.iid, image=icon)
+        table_state_view.see(row.iid)
 
     def show_about(self):
         version = importlib.metadata.version("thread-order")
@@ -641,11 +779,93 @@ class Runner(tb.Frame):
         # tables
         self.table_run.delete_rows()
 
-        # clear thread assignments
+        # clear thread assignments + reset icons
         tv = self.table_threads.view
         for iid in tv.get_children(''):
             thread_name, *_ = tv.item(iid, 'values')
             tv.item(iid, values=(thread_name, ''))
+
+        self._init_thread_icons()
+
+    def _get_thread_icon(self, color):
+        img = self._thread_icon_cache.get(color)
+        if img:
+            return img
+        size = self._thread_icon_size
+        img = tk.PhotoImage(width=size * 2, height=size)
+        img.put(color, to=(0, 0, size * 2, size))
+        self._thread_icon_cache[color] = img
+        return img
+
+    def _pick_new_thread_color(self, prev):
+        choices = [c for c in self._thread_icon_palette if c != prev]
+        if not choices:
+            return self._thread_icon_palette[0]
+        return random.choice(choices)
+
+    def _init_thread_icons(self):
+        tv = self.table_threads.view
+        grey = self._get_thread_icon(self._thread_icon_grey)
+        self._thread_icon_color.clear()
+
+        for iid in tv.get_children(''):
+            thread_name = tv.item(iid, 'values')[0]
+            tv.item(iid, image=grey)
+            self._thread_icon_color[thread_name] = self._thread_icon_grey
+
+    def _start_elapsed_ticker(self):
+        # cancel existing ticker if any
+        if self._elapsed_job is not None:
+            try:
+                self.after_cancel(self._elapsed_job)
+            except Exception:
+                pass
+            self._elapsed_job = None
+
+        self._run_t0 = time.monotonic()
+        self._tick_elapsed()
+
+    def _stop_elapsed_ticker(self):
+        if self._elapsed_job is not None:
+            try:
+                self.after_cancel(self._elapsed_job)
+            except Exception:
+                pass
+            self._elapsed_job = None
+
+    def _tick_elapsed(self):
+        if not self._running or self._run_t0 is None:
+            return
+
+        elapsed = int(time.monotonic() - self._run_t0)
+        hours = elapsed // 3600
+        mins = (elapsed % 3600) // 60
+        secs = elapsed % 60
+        self.duration_var.set(f"{hours:02d}:{mins:02d}:{secs:02d}")
+        # was 500ms; 1s is enough since you display seconds
+        self._elapsed_job = self.after(1000, self._tick_elapsed)
+
+    def _autohide_scrollbar(self, scrollbar):
+        def _wrapped(first, last):
+            first, last = float(first), float(last)
+
+            if first <= 0.0 and last >= 1.0:
+                # content fully visible → hide scrollbar
+                if scrollbar.winfo_ismapped():
+                    scrollbar.pack_forget()
+            else:
+                # overflow → show scrollbar
+                if not scrollbar.winfo_ismapped():
+                    scrollbar.pack(side=RIGHT, fill=Y, padx=(4, 0))
+
+            scrollbar.set(first, last)
+
+        return _wrapped
+
+def _legend_item(parent, icon, text):
+    w = tb.Label(parent, image=icon, text=f"  {text}", compound="left")
+    w.pack(side=LEFT, padx=(8, 0))
+    return w
 
 def _maybe_call_setup_state(module, initial_state):
     """ invoke module-level setup_state(initial_state) if defined
@@ -655,11 +875,21 @@ def _maybe_call_setup_state(module, initial_state):
         setup_state_function(initial_state)
 
 def hide_tableview_hscroll(table):
-    for child in table.winfo_children():
-        # Only kill the scrollbar that is directly under the tableview container
-        if child.winfo_class() == "TScrollbar":
-            # This is the outer scrollbar (your horizontal one)
-            child.pack_forget()
+    # Hide only scrollbars wired to xview (horizontal).
+    def walk(w):
+        for child in w.winfo_children():
+            if child.winfo_class() == "TScrollbar":
+                try:
+                    cmd = str(child.cget("command"))
+                except Exception:
+                    cmd = ""
+                if "xview" in cmd:
+                    child.pack_forget()
+                    child.grid_forget()
+                    child.place_forget()
+            else:
+                walk(child)
+    walk(table)
 
 def _get_thread_number(thread_name, thread_prefix='thread_'):
     """ Extract the thread index from a thread name.

@@ -7,5 +7,4 @@
     "invoke_max": true,
     "storage": ["s3", "ebs", "efs", "glacier"],
     "service_profile": {"name": "asdef234", "id": 1001, "active": true}
-
 }
